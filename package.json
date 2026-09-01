@@ -1,0 +1,22 @@
+{
+  "name": "bet-dashboard",
+  "private": true,
+  "type": "module",
+  "description": "Personal multi-sport betting dashboard: aggregates model picks + tracks accuracy/P&L.",
+  "scripts": {
+    "contract:schema": "pnpm --filter @bet/contract schema",
+    "contract:examples": "pnpm --filter @bet/contract examples",
+    "contract:test": "pnpm --filter @bet/contract test",
+    "ingest": "pnpm --filter @bet/ingest start",
+    "ingest:dry": "pnpm --filter @bet/ingest dry",
+    "seed": "pnpm --filter @bet/db seed",
+    "web": "pnpm --filter @bet/web dev",
+    "build": "pnpm --filter @bet/web build",
+    "bootstrap": "pnpm contract:schema && pnpm contract:examples"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

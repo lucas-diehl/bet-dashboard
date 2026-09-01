@@ -1,0 +1,14 @@
+{
+  "name": "@bet/ingest",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dry": "tsx src/index.ts --dry"
+  },
+  "dependencies": {
+    "@bet/contract": "workspace:*",
+    "@bet/db": "workspace:*"
+  }
+}
