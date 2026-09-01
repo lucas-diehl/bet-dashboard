@@ -63,8 +63,6 @@ export function TopBar() {
               </Link>
             );
           })}
-          {/* /simulator is a raw-HTML route (owner-gated), so use a full-navigation anchor. */}
-          <a href="/simulator" className="tab">Sim</a>
         </nav>
       </div>
     </header>

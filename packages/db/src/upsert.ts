@@ -1,8 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { isLatePgaOutright, type PicksFile, type ResultsFile, type ValuesFile, type EloFile } from "@bet/contract";
-import { assets, bets, dfsValues, eloRatings, results, slates } from "./schema";
+import { isLatePgaOutright, type PicksFile, type ResultsFile, type ValuesFile, type EloFile, type PoolFile } from "@bet/contract";
+import { assets, bets, dfsPools, dfsValues, eloRatings, results, slates } from "./schema";
 
 export function openDb(url: string) {
   const isLocal = /localhost|127\.0\.0\.1/.test(url);
@@ -233,4 +233,37 @@ export async function upsertEloFile(db: Db, e: EloFile) {
       change: r.change ?? null,
     })),
   );
+}
+
+/** Replace a DFS pool: delete the existing row for this
+ *  source+sport+site+slate_date+slate_type+round, then insert the new payload blob.
+ *  slate_type/round are coalesced (tournament/0) so the key match is well-defined. */
+export async function upsertPoolFile(db: Db, p: PoolFile) {
+  const stype = p.slate_type ?? "tournament";
+  const rnd = p.round ?? 0;
+  await db
+    .delete(dfsPools)
+    .where(
+      and(
+        eq(dfsPools.source, p.source),
+        eq(dfsPools.sport, p.sport),
+        eq(dfsPools.site, p.site),
+        eq(dfsPools.slateDate, p.slate_date),
+        eq(dfsPools.slateType, stype),
+        eq(dfsPools.round, rnd),
+      ),
+    );
+  await db.insert(dfsPools).values({
+    source: p.source,
+    sport: p.sport,
+    site: p.site,
+    slateDate: p.slate_date,
+    slateLabel: p.slate_label ?? null,
+    slateType: stype,
+    round: rnd,
+    event: p.event ?? null,
+    payload: JSON.stringify(p),
+    generatedAt: p.generated_at ? new Date(p.generated_at) : null,
+    updatedAt: new Date(),
+  });
 }

@@ -139,6 +139,28 @@ export const assets = pgTable("assets", {
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// SaberSim-style simulation pools for the browser DFS optimizer — one row per slate
+// holding the whole build_sim_payload() JSON (players + draws + fgrid + cands). Keyed
+// by source/sport/site/slate_date/slate_type/round; replaced wholesale on ingest.
+export const dfsPools = pgTable(
+  "dfs_pools",
+  {
+    id: serial("id").primaryKey(),
+    source: text("source").notNull(),
+    sport: text("sport").notNull(),
+    site: text("site").notNull(),
+    slateDate: date("slate_date").notNull(),
+    slateLabel: text("slate_label"),
+    slateType: text("slate_type"),
+    round: integer("round"),
+    event: text("event"),
+    payload: text("payload").notNull(), // the full pool JSON
+    generatedAt: timestamp("generated_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ idx: index("dfs_pools_slate").on(t.source, t.sport, t.site, t.slateDate) }),
+);
+
 export type SlateInsert = typeof slates.$inferInsert;
 export type BetInsert = typeof bets.$inferInsert;
 export type ResultInsert = typeof results.$inferInsert;

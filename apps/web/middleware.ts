@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, SIM_COOKIE, verifySessionToken, verifySimToken } from "@/lib/auth";
+import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 
 // Public paths that never require a session.
 const PUBLIC = ["/login", "/api/auth", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
@@ -15,18 +15,6 @@ export async function middleware(req: NextRequest) {
     url.pathname = "/login";
     url.search = pathname === "/" ? "" : `?next=${encodeURIComponent(pathname)}`;
     return NextResponse.redirect(url);
-  }
-
-  // Second gate: the served simulator (owner-only). The unlock page + its API are
-  // reachable with just the site session; the HTML itself needs the sim cookie.
-  if (pathname === "/simulator") {
-    const sim = await verifySimToken(req.cookies.get(SIM_COOKIE)?.value);
-    if (!sim) {
-      const url = req.nextUrl.clone();
-      url.pathname = "/simulator/unlock";
-      url.search = "";
-      return NextResponse.redirect(url);
-    }
   }
 
   return NextResponse.next();

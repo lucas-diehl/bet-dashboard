@@ -1,6 +1,42 @@
 import { desc, eq, sql } from "drizzle-orm";
 import type { Db } from "./upsert";
-import { assets, bets, dfsValues, eloRatings, results, slates } from "./schema";
+import { assets, bets, dfsPools, dfsValues, eloRatings, results, slates } from "./schema";
+
+export interface PoolMeta {
+  id: number;
+  source: string;
+  sport: string;
+  site: string;
+  slate_date: string;
+  slate_label?: string;
+  slate_type?: string;
+  round?: number;
+  event?: string;
+  generated_at: string | null;
+}
+
+/** List available DFS pools — metadata only (NOT the large payload), for the optimizer's selectors. */
+export async function loadPoolIndex(db: Db): Promise<PoolMeta[]> {
+  const rows = await db
+    .select({
+      id: dfsPools.id, source: dfsPools.source, sport: dfsPools.sport, site: dfsPools.site,
+      slateDate: dfsPools.slateDate, slateLabel: dfsPools.slateLabel, slateType: dfsPools.slateType,
+      round: dfsPools.round, event: dfsPools.event, generatedAt: dfsPools.generatedAt,
+    })
+    .from(dfsPools);
+  return rows.map((r) => ({
+    id: r.id, source: r.source, sport: r.sport, site: r.site, slate_date: String(r.slateDate),
+    slate_label: r.slateLabel ?? undefined, slate_type: r.slateType ?? undefined,
+    round: r.round ?? undefined, event: r.event ?? undefined,
+    generated_at: r.generatedAt ? r.generatedAt.toISOString() : null,
+  }));
+}
+
+/** The full pool payload JSON (string) for one pool id. */
+export async function loadPoolPayload(db: Db, id: number): Promise<string | null> {
+  const [r] = await db.select({ payload: dfsPools.payload }).from(dfsPools).where(eq(dfsPools.id, id)).limit(1);
+  return r?.payload ?? null;
+}
 
 /** Read one asset blob (content + updated) by key, e.g. the simulator HTML. */
 export async function loadAsset(db: Db, key: string): Promise<{ content: string; updated: string | null } | null> {

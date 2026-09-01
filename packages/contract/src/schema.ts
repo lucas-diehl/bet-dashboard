@@ -265,3 +265,66 @@ export const EloFileSchema = z
   .describe("A full Elo-rating snapshot for one sport's players (display-only, Extras tab).");
 
 export type EloFile = z.infer<typeof EloFileSchema>;
+
+// ---------------------------------------------------------------------------
+// pool_<sport>_<date>_<site>.json — the SaberSim-style simulation payload the
+// browser DFS optimizer consumes (from the DFS ENGINE's build_sim_payload). A
+// FIFTH feed file type, distinguished by its top-level `draws` array. One file
+// per (sport, site, slate). Large (draws = per-player simulated points), stored
+// as a blob and read whole by the /dfs optimizer; not shown as picks/values.
+// ---------------------------------------------------------------------------
+export const PoolPlayerSchema = z
+  .object({
+    name: z.string().min(1),
+    team: z.string().nullable().optional(),
+    pos: z.string().optional().describe("Roster-eligible position (golf/tennis use a flat 'G'/'P')."),
+    salary: z.number().int(),
+    proj: z.number().describe("Projected mean fantasy points."),
+    own: z.number().optional().describe("Projected field ownership 0..1."),
+  })
+  .describe("One player in the optimizer pool.");
+
+export const PoolRosterSchema = z
+  .object({
+    n: z.number().int().nullable().optional().describe("Total roster slots."),
+    cap: z.number().describe("Salary cap."),
+    floor: z.number().optional().describe("Minimum salary spend."),
+    slots: z.record(z.number()).nullable().optional().describe("Per-position slot minimums (team sports)."),
+    flex: z.object({ positions: z.array(z.string()), count: z.number() }).nullable().optional().describe("FLEX slot config."),
+    team_limit: z.number().nullable().optional(),
+    max_per_game: z.number().nullable().optional(),
+  })
+  .describe("Roster construction rules for one site (salary cap, slots, flex, limits).");
+
+export const PoolFileSchema = z
+  .object({
+    contract_version: z.string(),
+    source: z.string().min(1).describe("Producing project key — 'dfs-engine'."),
+    sport: z.string().min(1).describe("DFS sport key: golf | wnba | tennis | nfl."),
+    site: z.string().describe("DFS site: draftkings | fanduel."),
+    slate_date: isoDate,
+    slate_label: z.string().optional(),
+    slate_type: z.string().optional().describe("'single_round' for a round-specific golf slate."),
+    round: z.number().int().optional(),
+    event: z.string().optional(),
+    generated_at: timestamp,
+    // ---- build_sim_payload() output (SaberSim-style) ----
+    k: z.number().int().describe("Number of down-sampled simulation columns."),
+    field_size: z.number().int().optional(),
+    qlevels: z.array(z.number()).describe("CDF quantile levels for the field-score grid."),
+    roster: PoolRosterSchema,
+    players: z.array(PoolPlayerSchema),
+    draws: z.array(z.array(z.number())).describe("Per-player simulated points: P arrays of K ints (correlation baked in)."),
+    fgrid: z.array(z.array(z.number())).describe("Field-score quantile grid: K arrays of Q ints."),
+    gpp_mult: z.array(z.number()).describe("GPP payout multiplier vector by finish rank."),
+    cash_mult: z.array(z.number()).describe("Cash/double-up payout multiplier vector."),
+    cands: z.array(z.array(z.number().int())).describe("Candidate lineups as 0-based player-index arrays."),
+    opt_k: z.number().int().optional().describe("Sim count the cand_metrics were graded on."),
+    cand_metrics: z.array(z.record(z.unknown())).nullable().optional().describe("Per-candidate metrics (gppRoi, cash, top1, win, dupe, own, proj)."),
+    contests: z.array(z.record(z.unknown())).optional().describe("Live contest options (name, fee, field, payout mult)."),
+  })
+  .describe("A SaberSim-style simulation pool for one DFS slate — the data feed for the browser optimizer.");
+
+export type PoolFile = z.infer<typeof PoolFileSchema>;
+export type PoolPlayer = z.infer<typeof PoolPlayerSchema>;
+export type PoolRoster = z.infer<typeof PoolRosterSchema>;

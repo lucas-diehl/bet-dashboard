@@ -1,4 +1,4 @@
-import { PicksFileSchema, ResultsFileSchema, ValuesFileSchema, EloFileSchema, type PicksFile, type ResultsFile, type ValuesFile, type EloFile } from "./schema";
+import { PicksFileSchema, ResultsFileSchema, ValuesFileSchema, EloFileSchema, PoolFileSchema, type PicksFile, type ResultsFile, type ValuesFile, type EloFile, type PoolFile } from "./schema";
 
 export * from "./schema";
 export * from "./registry";
@@ -59,11 +59,21 @@ export function safeParseEloFile(json: unknown): ParseResult<EloFile> {
   return r.success ? { ok: true, data: r.data } : { ok: false, errors: flatten(r.error) };
 }
 
+export function parsePoolFile(json: unknown): PoolFile {
+  return PoolFileSchema.parse(json);
+}
+
+export function safeParsePoolFile(json: unknown): ParseResult<PoolFile> {
+  const r = PoolFileSchema.safeParse(json);
+  return r.success ? { ok: true, data: r.data } : { ok: false, errors: flatten(r.error) };
+}
+
 /** Identify a feed file by its distinguishing top-level array key. */
-export function classifyFeedFile(json: unknown): "picks" | "results" | "values" | "elo" | "unknown" {
+export function classifyFeedFile(json: unknown): "picks" | "results" | "values" | "elo" | "pool" | "unknown" {
   if (json && typeof json === "object") {
     if ("bets" in (json as object)) return "picks";
     if ("results" in (json as object)) return "results";
+    if ("draws" in (json as object)) return "pool"; // SaberSim sim payload (before "values" — a pool has neither)
     if ("values" in (json as object)) return "values";
     if ("ratings" in (json as object)) return "elo";
   }
