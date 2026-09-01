@@ -14,7 +14,11 @@ export function openDb(url: string) {
 export type DbHandle = ReturnType<typeof openDb>;
 export type Db = DbHandle["db"];
 
-/** Upsert one picks file: replace the slate (by source+sport+date) and its bets.
+/** Upsert one picks file: refresh the slate (by source+sport+date), then insert any
+ *  new bets. Existing bets are FROZEN — a re-emit can add new picks and fill fields
+ *  that were missing at post time, but it can never change a posted pick's terms
+ *  (line/odds/side/selection/stake/etc.), so the board always reflects exactly what
+ *  we graded against (see the freeze block below).
  *  With { reconcile: true }, also delete bets for this slate that are NOT in the
  *  incoming file and have no grade yet (withdrawn/re-emitted-smaller — e.g. the
  *  golf tournament file shrinking). Graded bets are always kept. */
@@ -44,63 +48,86 @@ export async function upsertPicksFile(db: Db, p: PicksFile, opts?: { reconcile?:
   );
 
   for (const b of keptBets) {
-    await db
-      .insert(bets)
-      .values({
-        slateId: slate.id,
-        betId: b.bet_id,
-        source: p.source,
-        sport: b.sport ?? p.sport,
-        slateDate: p.slate_date,
-        mode: p.mode,
-        event: b.event,
-        eventStart: b.event_start ? new Date(b.event_start) : null,
-        market: b.market,
-        marketLabel: b.market_label,
-        selection: b.selection,
-        side: b.side ?? null,
-        line: b.line ?? null,
-        oddsAmerican: b.odds_american,
-        book: b.book,
-        modelProb: b.model_prob ?? null,
-        marketProb: b.market_prob ?? null,
-        edge: b.edge ?? null,
-        evPct: b.ev_pct ?? null,
-        stakeUnits: b.stake_units,
-        confidence: b.confidence,
-        tier: b.tier != null ? String(b.tier) : null,
-        tags: b.tags,
-        details: b.details,
-      })
-      .onConflictDoUpdate({
-        target: [bets.source, bets.betId],
-        // Refresh EVERY column the file carries — a re-emit must not leave stale
-        // evPct/book/line/etc. (evPct drives the dedupe tiebreak and card order).
-        set: {
-          slateId: slate.id,
-          sport: b.sport ?? p.sport,
-          slateDate: p.slate_date,
-          mode: p.mode,
-          event: b.event,
-          eventStart: b.event_start ? new Date(b.event_start) : null,
-          market: b.market,
-          marketLabel: b.market_label,
-          selection: b.selection,
-          side: b.side ?? null,
-          line: b.line ?? null,
-          oddsAmerican: b.odds_american,
-          book: b.book,
-          modelProb: b.model_prob ?? null,
-          marketProb: b.market_prob ?? null,
-          edge: b.edge ?? null,
-          evPct: b.ev_pct ?? null,
-          stakeUnits: b.stake_units,
-          confidence: b.confidence,
-          tier: b.tier != null ? String(b.tier) : null,
-          tags: b.tags,
-          details: b.details,
-        },
-      });
+    const incoming = {
+      slateId: slate.id,
+      betId: b.bet_id,
+      source: p.source,
+      sport: b.sport ?? p.sport,
+      slateDate: p.slate_date,
+      mode: p.mode,
+      event: b.event ?? null,
+      eventStart: b.event_start ? new Date(b.event_start) : null,
+      market: b.market,
+      marketLabel: b.market_label ?? null,
+      selection: b.selection,
+      side: b.side ?? null,
+      line: b.line ?? null,
+      oddsAmerican: b.odds_american,
+      book: b.book ?? null,
+      modelProb: b.model_prob ?? null,
+      marketProb: b.market_prob ?? null,
+      edge: b.edge ?? null,
+      evPct: b.ev_pct ?? null,
+      stakeUnits: b.stake_units,
+      confidence: b.confidence ?? null,
+      tier: b.tier != null ? String(b.tier) : null,
+      tags: b.tags ?? null,
+      details: b.details ?? null,
+    };
+
+    const [existing] = await db
+      .select()
+      .from(bets)
+      .where(and(eq(bets.source, p.source), eq(bets.betId, b.bet_id)))
+      .limit(1);
+
+    if (!existing) {
+      await db.insert(bets).values(incoming);
+      continue;
+    }
+
+    // FREEZE the posted pick. Once a bet is on the board it is exactly what we grade
+    // against, so a re-emit must never change its terms — TCU -7.5 must not silently
+    // become -9.5, odds/side/selection/stake are likewise locked. A re-emit may only
+    // FILL a field that was missing (null) at post time; slate_id is housekeeping and
+    // is kept current. This makes the whole snapshot immutable per (source, bet_id).
+    const keep = <T>(prior: T, next: T): T => (prior !== null && prior !== undefined ? prior : next);
+    const frozen = {
+      slateId: slate.id,
+      sport: keep(existing.sport, incoming.sport),
+      slateDate: keep(existing.slateDate, incoming.slateDate),
+      mode: keep(existing.mode, incoming.mode),
+      event: keep(existing.event, incoming.event),
+      eventStart: keep(existing.eventStart, incoming.eventStart),
+      market: keep(existing.market, incoming.market),
+      marketLabel: keep(existing.marketLabel, incoming.marketLabel),
+      selection: keep(existing.selection, incoming.selection),
+      side: keep(existing.side, incoming.side),
+      line: keep(existing.line, incoming.line),
+      oddsAmerican: keep(existing.oddsAmerican, incoming.oddsAmerican),
+      book: keep(existing.book, incoming.book),
+      modelProb: keep(existing.modelProb, incoming.modelProb),
+      marketProb: keep(existing.marketProb, incoming.marketProb),
+      edge: keep(existing.edge, incoming.edge),
+      evPct: keep(existing.evPct, incoming.evPct),
+      stakeUnits: keep(existing.stakeUnits, incoming.stakeUnits),
+      confidence: keep(existing.confidence, incoming.confidence),
+      tier: keep(existing.tier, incoming.tier),
+      tags: keep(existing.tags, incoming.tags),
+      details: keep(existing.details, incoming.details),
+    };
+    const termChanged =
+      (incoming.line != null && existing.line != null && incoming.line !== existing.line) ||
+      (existing.oddsAmerican != null && incoming.oddsAmerican !== existing.oddsAmerican) ||
+      (incoming.side != null && existing.side != null && incoming.side !== existing.side) ||
+      (incoming.selection !== existing.selection) ||
+      (incoming.stakeUnits != null && existing.stakeUnits != null && incoming.stakeUnits !== existing.stakeUnits);
+    if (termChanged) {
+      console.log(
+        `  freeze: kept posted terms for ${p.source}/${b.bet_id} — re-emit tried ${existing.selection} ${existing.side ?? ""} ${existing.line ?? ""} @${existing.oddsAmerican}/${existing.stakeUnits}u → ${incoming.selection} ${incoming.side ?? ""} ${incoming.line ?? ""} @${incoming.oddsAmerican}/${incoming.stakeUnits}u (ignored)`,
+      );
+    }
+    await db.update(bets).set(frozen).where(eq(bets.id, existing.id));
   }
 
   if (opts?.reconcile) {

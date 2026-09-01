@@ -144,7 +144,7 @@ async function main() {
   }
 
   await handle.close();
-  console.log(`\nUpserted ${picks.length} picks files, ${results.length} results files, ${values.length} values files, ${elos.length} elo files.`);
+  console.log(`\nUpserted ${picks.length} picks files, ${results.length} results files, ${values.length} values files, ${elos.length} elo files, ${pools.length} pool files.`);
 }
 
 main().catch((e) => {
