@@ -1,54 +1,88 @@
 "use client";
-import { useMemo, useState } from "react";
-import { generateLineups, type Pool, type OptResult } from "@/lib/optimizer";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { generateLineups, type Pool, type OptResult, type ContestType } from "@/lib/optimizer";
 import { cls } from "@/lib/format";
 
-// Interactive DFS lineup optimizer. Runs entirely in the browser off the DFS-ENGINE
-// pool; a fresh random seed each "Generate" varies the lineups so no two runs match.
-// No P&L / ROI / $ figures — this is a build tool, not a tracker.
+// Interactive DFS lineup optimizer over the DFS-ENGINE pool. A fresh random seed each
+// build varies the lineups so no two runs/users match. No P&L / ROI / $ is surfaced —
+// this is a build tool, not a tracker. SaberSim/Stokastic-style contest presets pick the
+// objective (floor vs balanced vs ceiling), lineup count, and exposure for you.
+const PRESETS: Record<ContestType, { label: string; sub: string; n: number; expo: number }> = {
+  cash: { label: "Cash", sub: "Double-ups · highest floor", n: 5, expo: 1.0 },
+  single: { label: "Single GPP", sub: "One-entry tourney · balanced", n: 1, expo: 1.0 },
+  gpp20: { label: "20-Max GPP", sub: "20 diversified lineups", n: 20, expo: 0.5 },
+  large: { label: "Large GPP", sub: "Mass-entry · ceiling + leverage", n: 60, expo: 0.3 },
+};
+const ORDER: ContestType[] = ["cash", "single", "gpp20", "large"];
+
 export function Optimizer({ pool }: { pool: Pool }) {
   const rosterN = pool.roster.n ?? pool.cands[0]?.length ?? 6;
-  const [nLineups, setNLineups] = useState(20);
-  const [contest, setContest] = useState<"gpp" | "cash">("gpp");
-  const [maxExposure, setMaxExposure] = useState(0.4);
+  const [contest, setContest] = useState<ContestType>("gpp20");
+  const [nLineups, setNLineups] = useState(PRESETS.gpp20.n);
+  const [maxExposure, setMaxExposure] = useState(PRESETS.gpp20.expo);
   const [locks, setLocks] = useState<Set<number>>(new Set());
   const [excludes, setExcludes] = useState<Set<number>>(new Set());
   const [result, setResult] = useState<OptResult | null>(null);
-  const [busy, setBusy] = useState(false);
 
   const players = useMemo(() => pool.players.map((p, i) => ({ ...p, i })).sort((a, b) => b.proj - a.proj), [pool]);
   const individual = pool.sport === "golf" || pool.sport === "tennis";
   const expoOf = (i: number) => result?.exposure.find((e) => e.idx === i)?.pct ?? 0;
 
-  function toggle(set: Set<number>, i: number, other: Set<number>, setThis: (s: Set<number>) => void, setOther: (s: Set<number>) => void) {
-    const next = new Set(set);
-    if (next.has(i)) next.delete(i);
-    else { next.add(i); if (other.has(i)) { const o = new Set(other); o.delete(i); setOther(o); } }
-    setThis(next);
-  }
+  const build = useCallback(
+    (c: ContestType, n: number, expo: number, lk: Set<number>, ex: Set<number>) => {
+      setResult(
+        generateLineups(pool, {
+          nLineups: n, contest: c, maxExposure: expo, locks: [...lk], excludes: [...ex],
+          seed: (Math.random() * 2 ** 32) >>> 0, // fresh seed → different set every build
+        }),
+      );
+    },
+    [pool],
+  );
 
-  function generate() {
-    setBusy(true);
-    // fresh seed each click → different diversified set every run
-    const r = generateLineups(pool, {
-      nLineups, contest, maxExposure, locks: [...locks], excludes: [...excludes],
-      seed: (Math.random() * 2 ** 32) >>> 0,
-    });
-    setResult(r);
-    setBusy(false);
+  // Build once on load (and whenever the slate changes) so lineups are there immediately.
+  useEffect(() => {
+    setContest("gpp20"); setNLineups(PRESETS.gpp20.n); setMaxExposure(PRESETS.gpp20.expo);
+    setLocks(new Set()); setExcludes(new Set());
+    build("gpp20", PRESETS.gpp20.n, PRESETS.gpp20.expo, new Set(), new Set());
+  }, [pool, build]);
+
+  function pickContest(c: ContestType) {
+    const p = PRESETS[c];
+    setContest(c); setNLineups(p.n); setMaxExposure(p.expo);
+    build(c, p.n, p.expo, locks, excludes); // apply immediately so the choice is visible
+  }
+  function regenerate() {
+    build(contest, nLineups, maxExposure, locks, excludes);
+  }
+  // Lock/exclude toggles rebuild live (SaberSim-style).
+  function toggle(which: "lock" | "excl", i: number) {
+    const cur = which === "lock" ? locks : excludes;
+    const other = which === "lock" ? excludes : locks;
+    const next = new Set(cur);
+    const nextOther = new Set(other);
+    if (next.has(i)) next.delete(i);
+    else { next.add(i); nextOther.delete(i); }
+    const lk = which === "lock" ? next : nextOther;
+    const ex = which === "lock" ? nextOther : next;
+    setLocks(lk); setExcludes(ex);
+    build(contest, nLineups, maxExposure, lk, ex);
   }
 
   return (
     <div className="section">
-      {/* ---- controls ---- */}
-      <div className="card" style={{ padding: 14, display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-end" }}>
-        <div>
-          <label className="subhead" style={{ margin: 0 }}>Contest</label>
-          <div className="seg" style={{ marginTop: 4 }}>
-            <button className={cls(contest === "gpp" && "on")} onClick={() => setContest("gpp")}>GPP</button>
-            <button className={cls(contest === "cash" && "on")} onClick={() => setContest("cash")}>Cash</button>
-          </div>
-        </div>
+      {/* ---- contest presets ---- */}
+      <div className="opt-contests">
+        {ORDER.map((c) => (
+          <button key={c} className={cls("opt-contest", contest === c && "on")} onClick={() => pickContest(c)}>
+            <span className="opt-contest-label">{PRESETS[c].label}</span>
+            <span className="opt-contest-sub">{PRESETS[c].sub}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ---- fine controls ---- */}
+      <div className="card" style={{ padding: 14, display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-end", marginTop: 10 }}>
         <div>
           <label className="subhead" style={{ margin: 0 }}>Lineups</label>
           <input type="number" min={1} max={150} value={nLineups} onChange={(e) => setNLineups(Math.max(1, Math.min(150, +e.target.value || 1)))}
@@ -60,9 +94,9 @@ export function Optimizer({ pool }: { pool: Pool }) {
             style={{ display: "block", marginTop: 8, width: 160 }} />
         </div>
         <div style={{ flex: 1 }} />
-        <button className={cls("iconbtn", busy && "busy")} onClick={generate} disabled={busy}
+        <button className="iconbtn" onClick={regenerate}
           style={{ height: 40, padding: "0 20px", background: "var(--accent)", color: "#fff", borderColor: "transparent", fontWeight: 700 }}>
-          {busy ? "…" : "⚡ Generate lineups"}
+          ⚡ Build lineups
         </button>
       </div>
 
@@ -108,11 +142,11 @@ export function Optimizer({ pool }: { pool: Pool }) {
                   </td>
                   <td>
                     <button className={cls("pill", locks.has(p.i) && "live")} style={{ cursor: "pointer" }}
-                      onClick={() => toggle(locks, p.i, excludes, setLocks, setExcludes)}>{locks.has(p.i) ? "✓" : "+"}</button>
+                      onClick={() => toggle("lock", p.i)}>{locks.has(p.i) ? "✓" : "+"}</button>
                   </td>
                   <td>
                     <button className={cls("pill", excludes.has(p.i) && "paper")} style={{ cursor: "pointer" }}
-                      onClick={() => toggle(excludes, p.i, locks, setExcludes, setLocks)}>{excludes.has(p.i) ? "✕" : "–"}</button>
+                      onClick={() => toggle("excl", p.i)}>{excludes.has(p.i) ? "✕" : "–"}</button>
                   </td>
                 </tr>
               ))}
@@ -124,7 +158,7 @@ export function Optimizer({ pool }: { pool: Pool }) {
       {/* ---- generated lineups ---- */}
       {result && (
         <>
-          <div className="subhead" style={{ marginTop: 16 }}>{result.lineups.length} lineups</div>
+          <div className="subhead" style={{ marginTop: 16 }}>{result.lineups.length} {PRESETS[contest].label} lineup{result.lineups.length === 1 ? "" : "s"}</div>
           {result.lineups.length === 0 ? (
             <div className="empty">No lineups fit those constraints — loosen locks/excludes or raise max exposure.</div>
           ) : (
@@ -159,7 +193,10 @@ export function Optimizer({ pool }: { pool: Pool }) {
               </div>
             </div>
           )}
-          <div className="updated" style={{ marginTop: 8 }}>Each Generate reseeds — run again for a different set. Win% is P(1st) over the engine's 50k-sim field.</div>
+          <div className="updated" style={{ marginTop: 8 }}>
+            {contest === "cash" ? "Ranked by floor / double-up EV." : contest === "large" ? "Ranked by ceiling (P[1st]) with max uniqueness + leverage." : "Ranked by tournament ROI over the engine's 50k-sim field."}
+            {" "}Each build reseeds — hit Build again for a different set.
+          </div>
         </>
       )}
     </div>

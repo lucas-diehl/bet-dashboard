@@ -58,14 +58,30 @@ export interface Pool {
   contests?: unknown[];
 }
 
+export type ContestType = "cash" | "single" | "gpp20" | "large";
+
+// SaberSim/Stokastic-style contest presets. Each ranks the engine's pre-graded
+// candidates by a different metric and wants a different amount of run-to-run
+// variety + lineup uniqueness:
+//   cash   -> double-ups: rank by cash EV (floor), tight builds
+//   single -> one-entry tournament: one balanced +ROI lineup
+//   gpp20  -> 20-max tournament: diversified tournament-ROI set
+//   large  -> mass multi-entry: rank by ceiling (P[1st]) with max uniqueness + leverage
+export const CONTESTS: Record<ContestType, { metric: keyof CandMetric; jitter: number; overlap: number }> = {
+  cash: { metric: "cash", jitter: 0.1, overlap: 0 },
+  single: { metric: "gppRoi", jitter: 0.2, overlap: 0 },
+  gpp20: { metric: "gppRoi", jitter: 0.3, overlap: 1 },
+  large: { metric: "top1", jitter: 0.45, overlap: 2 },
+};
+
 export interface OptSettings {
   nLineups: number;
-  contest: "gpp" | "cash";
+  contest: ContestType;
   maxExposure: number; // 0..1 per-player cap across the set
   locks: number[]; // player indices forced into every lineup
   excludes: number[]; // player indices removed from the pool
-  maxOverlap?: number; // max shared players between any two lineups (default n-1)
-  jitter?: number; // 0..1 randomization strength (default 0.3 = ±15%)
+  maxOverlap?: number; // max shared players between any two lineups (default n - CONTESTS[contest].overlap)
+  jitter?: number; // 0..1 randomization strength (default per contest)
   seed?: number;
 }
 
@@ -120,12 +136,13 @@ export function generateLineups(pool: Pool, settings: OptSettings): OptResult {
   const seed = settings.seed ?? ((Math.random() * 2 ** 32) >>> 0);
   const rng = mulberry32(seed);
   const n = pool.roster.n ?? pool.cands[0]?.length ?? 6;
-  const maxOverlap = settings.maxOverlap ?? Math.max(1, n - 1);
+  const cfg = CONTESTS[settings.contest] ?? CONTESTS.gpp20;
+  const maxOverlap = settings.maxOverlap ?? Math.max(1, n - cfg.overlap);
   const capCount = Math.max(1, Math.ceil(settings.maxExposure * settings.nLineups));
-  const jitter = settings.jitter ?? 0.3;
+  const jitter = settings.jitter ?? cfg.jitter;
   const locks = new Set(settings.locks);
   const excludes = new Set(settings.excludes);
-  const contestKey = settings.contest === "cash" ? "cash" : "gppRoi";
+  const contestKey = cfg.metric;
 
   // Candidates that satisfy locks (⊇) and excludes (∩ = ∅).
   const eligible = pool.cands
@@ -139,7 +156,7 @@ export function generateLineups(pool: Pool, settings: OptSettings): OptResult {
   // Rank by the contest metric with a fresh seeded perturbation (run-to-run variety).
   const scored = eligible
     .map((c) => {
-      const base = num(c.m?.[contestKey as keyof CandMetric]) ?? num(c.m?.win) ?? num(c.m?.proj) ?? 0;
+      const base = num(c.m?.[contestKey]) ?? num(c.m?.gppRoi) ?? num(c.m?.win) ?? num(c.m?.proj) ?? 0;
       return { ...c, score: base * (1 + (rng() - 0.5) * jitter) };
     })
     .sort((a, b) => b.score - a.score);
