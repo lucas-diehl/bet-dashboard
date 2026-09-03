@@ -3,6 +3,7 @@ import { loadPoolIndex, loadPoolPayload } from "@/lib/pools";
 import { parsePool } from "@/lib/optimizer";
 import { Optimizer } from "@/components/Optimizer";
 import { cls } from "@/lib/format";
+import { appToday } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,10 @@ const siteKey = (s?: string): string => ((s ?? "").toLowerCase().includes("fan")
 
 export default async function DfsPage({ searchParams }: { searchParams: Promise<{ sport?: string; site?: string; slate?: string }> }) {
   const sp = await searchParams;
-  const index = await loadPoolIndex();
+  // The optimizer only ever shows the CURRENT slate — never past dates. Anything
+  // older than today is filtered out entirely (tabs, site toggle, and selector).
+  const today = appToday();
+  const index = (await loadPoolIndex()).filter((p) => p.slate_date >= today);
 
   const has = (sport: string) => index.some((p) => p.sport === sport);
   const sport = sp.sport && (SPORTS as readonly string[]).includes(sp.sport) && has(sp.sport) ? sp.sport : SPORTS.find(has) ?? "golf";
@@ -83,7 +87,7 @@ export default async function DfsPage({ searchParams }: { searchParams: Promise<
       )}
 
       {index.length === 0 ? (
-        <div className="empty">No optimizer pools yet — they appear after the next DFS-ENGINE run publishes a slate.</div>
+        <div className="empty">No slates posted for today yet — they appear after today&apos;s DFS-ENGINE run publishes.</div>
       ) : !pool ? (
         <div className="empty">No {siteLabel} {meta.label} slate available right now.</div>
       ) : (
