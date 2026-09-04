@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { classifyFeedFile, safeParsePicksFile, safeParseResultsFile, safeParseValuesFile, safeParseEloFile, type Grade, type PicksFile, type ValuesFile, type EloFile } from "@bet/contract";
+import { classifyFeedFile, safeParsePicksFile, safeParseResultsFile, safeParseValuesFile, safeParseEloFile, safeParseBoardFile, type Grade, type PicksFile, type ValuesFile, type EloFile, type BoardFile } from "@bet/contract";
 import type { ResultValue } from "@bet/core";
 import type { BetRow, Dataset, Mode, SlateRow } from "./types";
 
@@ -141,6 +141,25 @@ export function loadEloFromFeed(dir: string): EloFile[] {
     }
     if (classifyFeedFile(json) !== "elo") continue;
     const r = safeParseEloFile(json);
+    if (r.ok && r.data) out.push(r.data);
+  }
+  return out;
+}
+
+/** Read all model board files (classified "board") from the feed folder. Independent
+ *  of picks/results and of DATA_SOURCE — the /extras page reads these live. */
+export function loadBoardFromFeed(dir: string): BoardFile[] {
+  const out: BoardFile[] = [];
+  for (const file of walk(dir)) {
+    if (!file.endsWith(".json")) continue;
+    let json: unknown;
+    try {
+      json = JSON.parse(readFileSync(file, "utf8"));
+    } catch {
+      continue;
+    }
+    if (classifyFeedFile(json) !== "board") continue;
+    const r = safeParseBoardFile(json);
     if (r.ok && r.data) out.push(r.data);
   }
   return out;

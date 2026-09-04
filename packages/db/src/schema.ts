@@ -161,6 +161,26 @@ export const dfsPools = pgTable(
   (t) => ({ idx: index("dfs_pools_slate").on(t.source, t.sport, t.site, t.slateDate) }),
 );
 
+// Model "board" — display-only (Extras tab), one row per (source, sport, slate_date)
+// holding the whole board JSON (every game + the model's numbers). Replaced wholesale
+// on ingest (blob pattern like dfs_pools). Distinct from the picks `slates` table.
+export const modelBoards = pgTable(
+  "model_boards",
+  {
+    id: serial("id").primaryKey(),
+    source: text("source").notNull(),
+    sport: text("sport").notNull(),
+    slateDate: date("slate_date").notNull(),
+    generatedAt: timestamp("generated_at", { withTimezone: true }),
+    mode: text("mode"),
+    eventContext: text("event_context"),
+    notes: text("notes"),
+    payload: text("payload").notNull(), // the full BoardFile JSON
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ uniq: uniqueIndex("model_boards_natural_key").on(t.source, t.sport, t.slateDate) }),
+);
+
 export type SlateInsert = typeof slates.$inferInsert;
 export type BetInsert = typeof bets.$inferInsert;
 export type ResultInsert = typeof results.$inferInsert;

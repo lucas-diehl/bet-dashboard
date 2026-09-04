@@ -328,3 +328,58 @@ export const PoolFileSchema = z
 export type PoolFile = z.infer<typeof PoolFileSchema>;
 export type PoolPlayer = z.infer<typeof PoolPlayerSchema>;
 export type PoolRoster = z.infer<typeof PoolRosterSchema>;
+
+// ---------------------------------------------------------------------------
+// board_<date>.json — a model "board": ONE entry per game for a sport's slate,
+// display-only (Extras tab). A SIXTH feed file type, distinguished by its
+// top-level `games` array. One file per (source, sport, slate day); each emit
+// REPLACES the prior board for that (source, sport, slate_date). Read by the
+// /extras page; never graded or staked. Distinct from the picks "slate" (a group
+// of bets) — this is a reference board of EVERY game plus the model's numbers.
+// ---------------------------------------------------------------------------
+export const BoardGameSchema = z
+  .object({
+    game_id: z.string().describe("Stable game id (e.g. CFBD game_id)."),
+    event: z.string().describe("Matchup label, e.g. 'East Carolina @ Alabama'."),
+    event_start: timestamp.nullable().optional().describe("Scheduled kickoff; null if unknown."),
+    home_team: z.string(),
+    away_team: z.string(),
+    book: z.string().optional().describe("Sportsbook the lines are from."),
+    spread: z.number().nullable().optional().describe("Market home spread (negative = home favored)."),
+    total: z.number().nullable().optional().describe("Market total."),
+    proj_total: z.number().optional().describe("Model projected total."),
+    proj_margin: z.number().nullable().optional().describe("Model projected home margin; omitted early season when ratings are unreliable."),
+    proj_home_score: z.number().nullable().optional(),
+    proj_away_score: z.number().nullable().optional(),
+    ats_pick: z.string().nullable().optional().describe("Model's spread lean (team); informational."),
+    ats_line: z.number().nullable().optional(),
+    ats_edge: z.number().nullable().optional().describe("Points the model differs from the spread."),
+    ats_conf: ConfidenceSchema.nullable().optional(),
+    total_pick: z.string().nullable().optional().describe("'Under' or 'Over'."),
+    total_edge: z.number().nullable().optional().describe("Points the model differs from the total."),
+    total_conf: ConfidenceSchema.nullable().optional(),
+    total_play: z.boolean().optional().describe("True when the total meets a deployed bet rule (e.g. UNDER edge)."),
+    completed: z.boolean().optional(),
+    final_margin: z.number().nullable().optional(),
+    final_total: z.number().nullable().optional(),
+  })
+  .describe("One game on the model board: lines, model projection, lean, edge, confidence.");
+
+export type BoardGame = z.infer<typeof BoardGameSchema>;
+
+export const BoardFileSchema = z
+  .object({
+    contract_version: z.string(),
+    source: z.string().min(1).describe("Producing project key, e.g. 'cfb-modeling'."),
+    sport: z.string().min(1).describe("Canonical sport key, e.g. 'cfb'."),
+    slate_date: isoDate,
+    generated_at: timestamp,
+    model_version: z.string().optional(),
+    mode: ModeSchema,
+    event_context: z.string().optional().describe("Slate label, e.g. 'Week 1'."),
+    notes: z.string().optional().describe("Board-level note shown above the table."),
+    games: z.array(BoardGameSchema).describe("Every game on the slate + the model's numbers. Replaces the prior board for this (source, sport, slate_date)."),
+  })
+  .describe("A model board (every game + the model's numbers) for one sport's slate day (display-only, Extras tab).");
+
+export type BoardFile = z.infer<typeof BoardFileSchema>;

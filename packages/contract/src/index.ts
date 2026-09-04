@@ -1,4 +1,4 @@
-import { PicksFileSchema, ResultsFileSchema, ValuesFileSchema, EloFileSchema, PoolFileSchema, type PicksFile, type ResultsFile, type ValuesFile, type EloFile, type PoolFile } from "./schema";
+import { PicksFileSchema, ResultsFileSchema, ValuesFileSchema, EloFileSchema, PoolFileSchema, BoardFileSchema, type PicksFile, type ResultsFile, type ValuesFile, type EloFile, type PoolFile, type BoardFile } from "./schema";
 
 export * from "./schema";
 export * from "./registry";
@@ -68,14 +68,24 @@ export function safeParsePoolFile(json: unknown): ParseResult<PoolFile> {
   return r.success ? { ok: true, data: r.data } : { ok: false, errors: flatten(r.error) };
 }
 
+export function parseBoardFile(json: unknown): BoardFile {
+  return BoardFileSchema.parse(json);
+}
+
+export function safeParseBoardFile(json: unknown): ParseResult<BoardFile> {
+  const r = BoardFileSchema.safeParse(json);
+  return r.success ? { ok: true, data: r.data } : { ok: false, errors: flatten(r.error) };
+}
+
 /** Identify a feed file by its distinguishing top-level array key. */
-export function classifyFeedFile(json: unknown): "picks" | "results" | "values" | "elo" | "pool" | "unknown" {
+export function classifyFeedFile(json: unknown): "picks" | "results" | "values" | "elo" | "pool" | "board" | "unknown" {
   if (json && typeof json === "object") {
     if ("bets" in (json as object)) return "picks";
     if ("results" in (json as object)) return "results";
     if ("draws" in (json as object)) return "pool"; // SaberSim sim payload (before "values" — a pool has neither)
     if ("values" in (json as object)) return "values";
     if ("ratings" in (json as object)) return "elo";
+    if ("games" in (json as object)) return "board"; // model board (one entry per game)
   }
   return "unknown";
 }

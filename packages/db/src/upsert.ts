@@ -1,8 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { isLatePgaOutright, type PicksFile, type ResultsFile, type ValuesFile, type EloFile, type PoolFile } from "@bet/contract";
-import { assets, bets, dfsPools, dfsValues, eloRatings, results, slates } from "./schema";
+import { isLatePgaOutright, type PicksFile, type ResultsFile, type ValuesFile, type EloFile, type PoolFile, type BoardFile } from "@bet/contract";
+import { assets, bets, dfsPools, dfsValues, eloRatings, modelBoards, results, slates } from "./schema";
 
 export function openDb(url: string) {
   const isLocal = /localhost|127\.0\.0\.1/.test(url);
@@ -246,6 +246,25 @@ export async function upsertAsset(db: Db, key: string, content: string, updated:
 
 /** Replace an Elo snapshot: delete existing rows for this source+sport, then
  *  insert the new ratings list. */
+/** Replace a model board: delete the existing row for source+sport+slate_date, then
+ *  insert the whole BoardFile as a JSON blob (display-only, Extras tab). */
+export async function upsertBoardFile(db: Db, b: BoardFile) {
+  await db
+    .delete(modelBoards)
+    .where(and(eq(modelBoards.source, b.source), eq(modelBoards.sport, b.sport), eq(modelBoards.slateDate, b.slate_date)));
+  await db.insert(modelBoards).values({
+    source: b.source,
+    sport: b.sport,
+    slateDate: b.slate_date,
+    generatedAt: b.generated_at ? new Date(b.generated_at) : null,
+    mode: b.mode,
+    eventContext: b.event_context ?? null,
+    notes: b.notes ?? null,
+    payload: JSON.stringify(b),
+    updatedAt: new Date(),
+  });
+}
+
 export async function upsertEloFile(db: Db, e: EloFile) {
   await db.delete(eloRatings).where(and(eq(eloRatings.source, e.source), eq(eloRatings.sport, e.sport)));
   if (e.ratings.length === 0) return;
