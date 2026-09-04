@@ -23,6 +23,7 @@ export function Optimizer({ pool }: { pool: Pool }) {
   const [locks, setLocks] = useState<Set<number>>(new Set());
   const [excludes, setExcludes] = useState<Set<number>>(new Set());
   const [result, setResult] = useState<OptResult | null>(null);
+  const [showPool, setShowPool] = useState(false);
 
   const players = useMemo(() => pool.players.map((p, i) => ({ ...p, i })).sort((a, b) => b.proj - a.proj), [pool]);
   const individual = pool.sport === "golf" || pool.sport === "tennis";
@@ -107,55 +108,7 @@ export function Optimizer({ pool }: { pool: Pool }) {
         </div>
       )}
 
-      {/* ---- player pool ---- */}
-      <div className="subhead" style={{ marginTop: 16 }}>Player pool</div>
-      <div className="card" style={{ padding: "4px 12px" }}>
-        <div className="chart-scroll">
-          <table className="grid-table">
-            <thead>
-              <tr>
-                <th>Player</th>
-                {!individual ? <th>Team</th> : null}
-                {!individual ? <th>Pos</th> : null}
-                <th>Salary</th>
-                <th>Proj</th>
-                <th>Own%</th>
-                <th className="hl">Exp%</th>
-                <th>Lock</th>
-                <th>Excl</th>
-              </tr>
-            </thead>
-            <tbody>
-              {players.map((p) => (
-                <tr key={p.i}>
-                  <td style={{ textAlign: "left", fontWeight: 600 }}>{p.name}</td>
-                  {!individual ? <td>{p.team ?? ""}</td> : null}
-                  {!individual ? <td>{p.pos ?? ""}</td> : null}
-                  <td>${p.salary.toLocaleString()}</td>
-                  <td>{p.proj.toFixed(1)}</td>
-                  <td>{p.own != null ? `${Math.round(p.own * 100)}%` : "—"}</td>
-                  <td className="hl">
-                    <div className="barrow" style={{ minWidth: 60 }}>
-                      <div className="bartrack"><div className="barfill pos" style={{ width: `${Math.round(expoOf(p.i) * 100)}%` }} /></div>
-                      <span className="tabular">{result ? `${Math.round(expoOf(p.i) * 100)}%` : "—"}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <button className={cls("pill", locks.has(p.i) && "live")} style={{ cursor: "pointer" }}
-                      onClick={() => toggle("lock", p.i)}>{locks.has(p.i) ? "✓" : "+"}</button>
-                  </td>
-                  <td>
-                    <button className={cls("pill", excludes.has(p.i) && "paper")} style={{ cursor: "pointer" }}
-                      onClick={() => toggle("excl", p.i)}>{excludes.has(p.i) ? "✕" : "–"}</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ---- generated lineups ---- */}
+      {/* ---- generated lineups (shown first — no scrolling past the player pool) ---- */}
       {result && (
         <>
           <div className="subhead" style={{ marginTop: 16 }}>{result.lineups.length} {PRESETS[contest].label} lineup{result.lineups.length === 1 ? "" : "s"}</div>
@@ -180,7 +133,18 @@ export function Optimizer({ pool }: { pool: Pool }) {
                     {result.lineups.map((l, i) => (
                       <tr key={i}>
                         <td>{i + 1}</td>
-                        <td style={{ textAlign: "left" }}>{l.players.map((p) => pool.players[p]?.name).join(", ")}</td>
+                        <td style={{ textAlign: "left" }}>
+                          {l.players.map((p, j) => {
+                            const pl = pool.players[p];
+                            return (
+                              <span key={p}>
+                                {j > 0 ? ", " : ""}
+                                {pl?.pos ? <span className="muted">{pl.pos} </span> : null}
+                                {pl?.name}
+                              </span>
+                            );
+                          })}
+                        </td>
                         <td>${l.salary.toLocaleString()}</td>
                         <td>{l.proj.toFixed(1)}</td>
                         <td>{l.ceiling.toFixed(1)}</td>
@@ -198,6 +162,62 @@ export function Optimizer({ pool }: { pool: Pool }) {
             {" "}Each build reseeds — hit Build again for a different set.
           </div>
         </>
+      )}
+
+      {/* ---- player pool (collapsed by default — expand for lock/exclude) ---- */}
+      <button
+        onClick={() => setShowPool((s) => !s)}
+        className="subhead"
+        style={{ marginTop: 16, background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, padding: 0 }}
+      >
+        <span>{showPool ? "▾" : "▸"}</span> Player pool ({players.length}) — lock / exclude
+      </button>
+      {showPool && (
+        <div className="card" style={{ padding: "4px 12px", marginTop: 8 }}>
+          <div className="chart-scroll">
+            <table className="grid-table">
+              <thead>
+                <tr>
+                  <th>Player</th>
+                  {!individual ? <th>Team</th> : null}
+                  {!individual ? <th>Pos</th> : null}
+                  <th>Salary</th>
+                  <th>Proj</th>
+                  <th>Own%</th>
+                  <th className="hl">Exp%</th>
+                  <th>Lock</th>
+                  <th>Excl</th>
+                </tr>
+              </thead>
+              <tbody>
+                {players.map((p) => (
+                  <tr key={p.i}>
+                    <td style={{ textAlign: "left", fontWeight: 600 }}>{p.name}</td>
+                    {!individual ? <td>{p.team ?? ""}</td> : null}
+                    {!individual ? <td>{p.pos ?? ""}</td> : null}
+                    <td>${p.salary.toLocaleString()}</td>
+                    <td>{p.proj.toFixed(1)}</td>
+                    <td>{p.own != null ? `${Math.round(p.own * 100)}%` : "—"}</td>
+                    <td className="hl">
+                      <div className="barrow" style={{ minWidth: 60 }}>
+                        <div className="bartrack"><div className="barfill pos" style={{ width: `${Math.round(expoOf(p.i) * 100)}%` }} /></div>
+                        <span className="tabular">{result ? `${Math.round(expoOf(p.i) * 100)}%` : "—"}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <button className={cls("pill", locks.has(p.i) && "live")} style={{ cursor: "pointer" }}
+                        onClick={() => toggle("lock", p.i)}>{locks.has(p.i) ? "✓" : "+"}</button>
+                    </td>
+                    <td>
+                      <button className={cls("pill", excludes.has(p.i) && "paper")} style={{ cursor: "pointer" }}
+                        onClick={() => toggle("excl", p.i)}>{excludes.has(p.i) ? "✕" : "–"}</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   );
