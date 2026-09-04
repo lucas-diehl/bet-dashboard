@@ -7,12 +7,13 @@ import { appToday } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
-const SPORTS = ["golf", "wnba", "tennis", "nfl"] as const;
+const SPORTS = ["golf", "wnba", "tennis", "nfl", "ncaaf"] as const;
 const SPORT_META: Record<string, { label: string; cls: string }> = {
   golf: { label: "Golf", cls: "s-pga" },
   wnba: { label: "WNBA", cls: "s-wnba" },
   tennis: { label: "Tennis", cls: "s-tennis" },
   nfl: { label: "NFL", cls: "s-nfl" },
+  ncaaf: { label: "CFB", cls: "s-ncaaf" },
 };
 const SITES = [
   { k: "draftkings", label: "DraftKings" },
