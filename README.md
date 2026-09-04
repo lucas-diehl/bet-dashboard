@@ -1,5 +1,7 @@
 # Bet Hub
 
+<!-- git-auto-deploy verification ping: 2026-09-04 -->
+
 A personal, phone-friendly dashboard that aggregates the day's recommended bets
 from all of your models (bet-screen, golf-modeling, cfb-modeling, DFS ENGINE,
 KP_MM, EV_Model, …) and tracks their accuracy and P/L over time.
