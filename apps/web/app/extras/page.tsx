@@ -1,6 +1,7 @@
 import { loadElo } from "@/lib/elo";
 import { loadBoard } from "@/lib/board";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, cls } from "@/lib/format";
+import type { BoardGame } from "@bet/contract";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,29 @@ function spreadLabel(g: { spread?: number | null; home_team: string; away_team: 
 }
 
 const confClass = (c?: string | null) => (c === "high" ? "pos" : c === "medium" ? "" : "");
+
+// Grade EVERY completed game on the board — not just the ones that became actual
+// bets — against the model's total lean (UNDER/OVER vs the market total) and spread
+// lean (ats_pick vs ats_line, in the pick's own perspective, matching the picks feed
+// convention). Returns null (no grade shown) until the game is final and the model
+// had a lean at all.
+type Grade = "win" | "loss" | "push";
+function totalGrade(g: BoardGame): Grade | null {
+  if (!g.completed || g.final_total == null || g.total_pick == null) return null;
+  const mkt = g.total; if (mkt == null) return null;
+  if (g.final_total === mkt) return "push";
+  const overHit = g.final_total > mkt;
+  return (g.total_pick === "Over") === overHit ? "win" : "loss";
+}
+function atsGrade(g: BoardGame): Grade | null {
+  if (!g.completed || g.final_margin == null || g.ats_pick == null || g.ats_line == null) return null;
+  const pickIsHome = g.ats_pick === g.home_team;
+  const marginForPick = pickIsHome ? g.final_margin : -g.final_margin;
+  const cover = marginForPick + g.ats_line;
+  if (Math.abs(cover) < 1e-9) return "push";
+  return cover > 0 ? "win" : "loss";
+}
+const GradeBadge = ({ g }: { g: Grade | null }) => (g ? <span className={cls("res", g)}>{g[0].toUpperCase()}</span> : null);
 
 // The Extras tab: reference views that aren't bets. CFB model board first, then golf Elo.
 export default async function ExtrasPage() {
@@ -84,23 +108,32 @@ export default async function ExtrasPage() {
                   </thead>
                   <tbody>
                     {games.map((g, i) => {
-                      const under = g.total_pick === "Under";
+                      const tg = totalGrade(g), ag = atsGrade(g);
+                      // final score, derived from final_total/final_margin (home - away)
+                      const finalScore = g.completed && g.final_total != null && g.final_margin != null
+                        ? `${Math.round((g.final_total + g.final_margin) / 2)}-${Math.round((g.final_total - g.final_margin) / 2)}`
+                        : null;
                       return (
                         <tr key={g.game_id ?? i}>
                           <td style={{ whiteSpace: "nowrap" }}>{kickoff(g.event_start)}</td>
                           <td style={{ textAlign: "left", fontWeight: 600 }}>
                             {g.away_team} <span style={{ opacity: 0.5 }}>@</span> {g.home_team}
-                            {g.completed ? <span style={{ opacity: 0.5, fontWeight: 400 }}> · final</span> : null}
+                            {g.completed ? (
+                              <span style={{ opacity: 0.5, fontWeight: 400 }}> · final{finalScore ? ` ${finalScore}` : ""}</span>
+                            ) : null}
                           </td>
                           <td style={{ whiteSpace: "nowrap" }}>{spreadLabel(g)}</td>
                           <td>{g.total ?? "—"}</td>
                           <td className="hl">{g.proj_total ?? "—"}</td>
                           <td>
                             {g.total_pick ? (
-                              <span className={g.total_play ? "pos" : ""} style={{ fontWeight: g.total_play ? 700 : 400 }}>
-                                {g.total_pick}
-                                {g.total_edge != null ? ` ${g.total_edge}` : ""}
-                                {g.total_play ? " ●" : ""}
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                                <span className={g.total_play ? "pos" : ""} style={{ fontWeight: g.total_play ? 700 : 400 }}>
+                                  {g.total_pick}
+                                  {g.total_edge != null ? ` ${g.total_edge}` : ""}
+                                  {g.total_play ? " ●" : ""}
+                                </span>
+                                <GradeBadge g={tg} />
                               </span>
                             ) : (
                               "—"
@@ -109,7 +142,14 @@ export default async function ExtrasPage() {
                           {hasMargin ? <td>{g.proj_margin != null ? (g.proj_margin > 0 ? `+${g.proj_margin}` : g.proj_margin) : "—"}</td> : null}
                           {hasMargin ? (
                             <td className={confClass(g.ats_conf)}>
-                              {g.ats_pick ? `${g.ats_pick}${g.ats_edge != null ? ` (${g.ats_edge})` : ""}` : "—"}
+                              {g.ats_pick ? (
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                                  <span>{g.ats_pick}{g.ats_edge != null ? ` (${g.ats_edge})` : ""}</span>
+                                  <GradeBadge g={ag} />
+                                </span>
+                              ) : (
+                                "—"
+                              )}
                             </td>
                           ) : null}
                         </tr>
