@@ -284,9 +284,15 @@ export async function upsertEloFile(db: Db, e: EloFile) {
 /** Replace a DFS pool: delete the existing row for this
  *  source+sport+site+slate_date+slate_type+round, then insert the new payload blob.
  *  slate_type/round are coalesced (tournament/0) so the key match is well-defined. */
+/** Replace a DFS pool: delete the existing row for this
+ *  source+sport+site+slate_date+slate_type+round+slate_label, then insert the new
+ *  payload blob. slate_label is part of the key (coalesced to "Main") so multiple
+ *  layouts of the same sport+date — Full Slate / Alt Slate / Showdown, see the DFS
+ *  engine's build_sport_cards_multi() — coexist instead of clobbering each other. */
 export async function upsertPoolFile(db: Db, p: PoolFile) {
   const stype = p.slate_type ?? "tournament";
   const rnd = p.round ?? 0;
+  const label = p.slate_label ?? "Main";
   await db
     .delete(dfsPools)
     .where(
@@ -297,6 +303,7 @@ export async function upsertPoolFile(db: Db, p: PoolFile) {
         eq(dfsPools.slateDate, p.slate_date),
         eq(dfsPools.slateType, stype),
         eq(dfsPools.round, rnd),
+        eq(dfsPools.slateLabel, label),
       ),
     );
   await db.insert(dfsPools).values({
@@ -304,7 +311,7 @@ export async function upsertPoolFile(db: Db, p: PoolFile) {
     sport: p.sport,
     site: p.site,
     slateDate: p.slate_date,
-    slateLabel: p.slate_label ?? null,
+    slateLabel: label,
     slateType: stype,
     round: rnd,
     event: p.event ?? null,

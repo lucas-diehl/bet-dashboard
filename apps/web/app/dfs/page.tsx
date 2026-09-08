@@ -46,8 +46,13 @@ export default async function DfsPage({ searchParams }: { searchParams: Promise<
   const siteLabel = SITES.find((x) => x.k === site)?.label ?? site;
   const href = (o: { sport?: string; site?: string; slate?: string | number }) =>
     `/dfs?sport=${o.sport ?? sport}&site=${o.site ?? site}${o.slate != null ? `&slate=${o.slate}` : ""}`;
-  const slateLabel = (s: { slate_date: string; slate_type?: string; round?: number; event?: string }) =>
-    `${s.event ? `${s.event} · ` : ""}${s.slate_type === "single_round" && s.round ? `R${s.round} · ` : ""}${s.slate_date}`;
+  // Layout picker text: prefer the DFS engine's human label (e.g. "Full Slate (16
+  // games)", "Showdown (NE @ SEA)", "Alt Slate (12 games, Sun Sep 13)") — falls back
+  // to the old event/round/date combo for slates published before slate_label existed.
+  const slateLabel = (s: { slate_date: string; slate_type?: string; round?: number; event?: string; slate_label?: string }) => {
+    if (s.slate_label && s.slate_label !== "Main") return s.slate_label;
+    return `${s.event ? `${s.event} · ` : ""}${s.slate_type === "single_round" && s.round ? `R${s.round} · ` : ""}${s.slate_date}`;
+  };
 
   return (
     <div className={meta.cls}>
@@ -76,15 +81,20 @@ export default async function DfsPage({ searchParams }: { searchParams: Promise<
       </div>
 
       {slates.length > 1 && (
-        <div className="filters" style={{ marginTop: 8 }}>
-          <div className="seg">
-            {slates.map((s) => (
-              <Link key={s.id} href={href({ slate: s.id })} className={cls(selected && s.id === selected.id && "on")}>
-                {slateLabel(s)}
-              </Link>
-            ))}
+        <>
+          <div className="updated" style={{ marginTop: 10 }}>
+            {slates.length} layouts available — pick one:
           </div>
-        </div>
+          <div className="filters" style={{ marginTop: 4 }}>
+            <div className="seg">
+              {slates.map((s) => (
+                <Link key={s.id} href={href({ slate: s.id })} className={cls(selected && s.id === selected.id && "on")}>
+                  {slateLabel(s)}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </>
       )}
 
       {index.length === 0 ? (
@@ -95,8 +105,13 @@ export default async function DfsPage({ searchParams }: { searchParams: Promise<
         <>
           <div className="section-head" style={{ marginTop: 16 }}>
             <span className="chip" />
-            <h2>{meta.label} — {siteLabel}{selected?.event ? ` — ${selected.event}` : ""}{selected?.slate_type === "single_round" && selected.round ? ` — Round ${selected.round}` : ""}</h2>
-            <span className="count">{pool.players.length} players · {pool.cands.length.toLocaleString()} candidates</span>
+            <h2>{meta.label} — {siteLabel}</h2>
+          </div>
+          <div className="updated" style={{ marginTop: -6 }}>
+            {selected && slateLabel(selected) !== `${meta.label} — ${siteLabel}` ? <><strong style={{ color: "var(--text)" }}>{slateLabel(selected)}</strong>{" · "}</> : null}
+            {selected?.event && selected.event !== selected?.slate_label ? <>{selected.event}{" · "}</> : null}
+            {pool.roster.n ?? pool.cands[0]?.length} roster spots · ${pool.roster.cap.toLocaleString()} cap
+            {" · "}{pool.players.length} players · {pool.cands.length.toLocaleString()} candidates
           </div>
           <Optimizer pool={pool} />
         </>
