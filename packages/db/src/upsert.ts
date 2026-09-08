@@ -328,3 +328,11 @@ export async function upsertPoolFile(db: Db, p: PoolFile) {
 export async function deletePoolById(db: Db, id: number) {
   await db.delete(dfsPools).where(eq(dfsPools.id, id));
 }
+
+/** Delete one bet by (source, bet_id) — e.g. an orphaned pick from a retired model
+ *  arm that will never grade (its underlying game data no longer matches on a
+ *  re-emit, and no future pick of that kind will replace it). Cascades to delete
+ *  any associated result row (results.bet_pk -> bets.id, onDelete: cascade). */
+export async function deleteBetByBetId(db: Db, source: string, betId: string) {
+  await db.delete(bets).where(and(eq(bets.source, source), eq(bets.betId, betId)));
+}
