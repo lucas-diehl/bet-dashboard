@@ -320,3 +320,11 @@ export async function upsertPoolFile(db: Db, p: PoolFile) {
     updatedAt: new Date(),
   });
 }
+
+/** Delete one pool row by id — e.g. a stale orphan left behind after a slate_label
+ *  match-key change (the widened upsertPoolFile key can't find/replace a row whose
+ *  label predates it). apps/ingest has no direct drizzle-orm dependency, so this
+ *  thin wrapper lets one-off cleanup scripts delete by id without needing it either. */
+export async function deletePoolById(db: Db, id: number) {
+  await db.delete(dfsPools).where(eq(dfsPools.id, id));
+}
