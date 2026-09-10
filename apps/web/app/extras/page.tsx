@@ -55,6 +55,11 @@ export default async function ExtrasPage() {
   const board = cfb.find((b) => b.slate_date >= todayET) ?? cfb[cfb.length - 1] ?? null;
   const games = board?.games ?? [];
   const hasMargin = games.some((g) => g.proj_margin != null);
+  // The spread column must also appear when bets actually shipped. proj_margin is withheld
+  // before MARGIN_MIN_WEEK (early-season ratings are noisy), but Arm O bets off the frozen
+  // OPENING line and posts in those same weeks — gating the column on hasMargin alone hid
+  // every posted spread bet from the board in wk1-2 while the bet slip showed them.
+  const hasAts = hasMargin || games.some((g) => g.ats_pick != null);
 
   const golf = eloFiles
     .filter((f) => f.sport === "pga")
@@ -103,7 +108,7 @@ export default async function ExtrasPage() {
                       <th className="hl">Model Tot</th>
                       <th>Total Lean</th>
                       {hasMargin ? <th>Proj Margin</th> : null}
-                      {hasMargin ? <th>Spread Lean</th> : null}
+                      {hasAts ? <th>Spread Pick</th> : null}
                     </tr>
                   </thead>
                   <tbody>
@@ -127,26 +132,45 @@ export default async function ExtrasPage() {
                           <td className="hl">{g.proj_total ?? "—"}</td>
                           <td>
                             {g.total_pick ? (
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                                <span className={g.total_play ? "pos" : ""} style={{ fontWeight: g.total_play ? 700 : 400 }}>
-                                  {g.total_pick}
-                                  {g.total_edge != null ? ` ${g.total_edge}` : ""}
-                                  {g.total_play ? " ●" : ""}
+                              <div>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                                  <span className={g.total_play ? "pos" : ""} style={{ fontWeight: g.total_play ? 700 : 400 }}>
+                                    {g.total_pick}
+                                    {g.total_edge != null ? ` ${g.total_edge}` : ""}
+                                    {g.total_play ? " ●" : ""}
+                                  </span>
+                                  <GradeBadge g={tg} />
                                 </span>
-                                <GradeBadge g={tg} />
-                              </span>
+                                {g.total_play && g.total_stake != null ? (
+                                  <div className="muted" style={{ fontSize: 11 }}>{g.total_stake}u</div>
+                                ) : null}
+                              </div>
                             ) : (
                               "—"
                             )}
                           </td>
                           {hasMargin ? <td>{g.proj_margin != null ? (g.proj_margin > 0 ? `+${g.proj_margin}` : g.proj_margin) : "—"}</td> : null}
-                          {hasMargin ? (
+                          {hasAts ? (
                             <td className={confClass(g.ats_conf)}>
                               {g.ats_pick ? (
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                                  <span>{g.ats_pick}{g.ats_edge != null ? ` (${g.ats_edge})` : ""}</span>
-                                  <GradeBadge g={ag} />
-                                </span>
+                                <div>
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                                    <span className={g.ats_play ? "pos" : ""} style={{ fontWeight: g.ats_play ? 700 : 400 }}>
+                                      {g.ats_pick}
+                                      {g.ats_line != null ? ` ${g.ats_line > 0 ? "+" : ""}${g.ats_line}` : ""}
+                                      {g.ats_edge != null ? ` (${g.ats_edge})` : ""}
+                                      {g.ats_play ? " ●" : ""}
+                                    </span>
+                                    <GradeBadge g={ag} />
+                                  </span>
+                                  {g.ats_play && (g.ats_stake != null || g.ats_consensus) ? (
+                                    <div className="muted" style={{ fontSize: 11 }}>
+                                      {g.ats_stake != null ? `${g.ats_stake}u` : ""}
+                                      {g.ats_stake != null && g.ats_consensus ? " · " : ""}
+                                      {g.ats_consensus ? `${g.ats_consensus} consensus` : ""}
+                                    </div>
+                                  ) : null}
+                                </div>
                               ) : (
                                 "—"
                               )}
@@ -161,7 +185,7 @@ export default async function ExtrasPage() {
             </div>
             <div className="updated" style={{ marginTop: 8 }}>
               {board.slate_date} · updated {board.generated_at ? fmtDate(board.generated_at) : "—"} · {board.mode} ·
-              {" "}● = UNDER play (deployed edge). Spread leans are informational — the model does not beat the closing spread.
+              {" "}● = a bet was actually posted (UNDER on totals; Arm O — beats the OPENING line, not the close — on spreads). Spread leans without ● are informational only.
             </div>
           </>
         )}

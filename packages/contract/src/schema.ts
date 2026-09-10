@@ -355,10 +355,18 @@ export const BoardGameSchema = z
     ats_line: z.number().nullable().optional(),
     ats_edge: z.number().nullable().optional().describe("Points the model differs from the spread."),
     ats_conf: ConfidenceSchema.nullable().optional(),
+    // When a spread bet actually shipped, the ats_* fields above carry the POSTED terms
+    // (the frozen opening line we graded against), not the informational lean — so the
+    // board can never show a different number than the bet slip for the same game.
+    ats_play: z.boolean().optional().describe("True when a spread bet was actually posted for this game."),
+    ats_book: z.string().nullable().optional().describe("Book the posted spread bet was taken at."),
+    ats_stake: z.number().nullable().optional().describe("Stake in units on the posted spread bet."),
+    ats_consensus: z.string().nullable().optional().describe("DVOA variant agreement behind the posted spread bet, e.g. '4/5'."),
     total_pick: z.string().nullable().optional().describe("'Under' or 'Over'."),
     total_edge: z.number().nullable().optional().describe("Points the model differs from the total."),
     total_conf: ConfidenceSchema.nullable().optional(),
-    total_play: z.boolean().optional().describe("True when the total meets a deployed bet rule (e.g. UNDER edge)."),
+    total_play: z.boolean().optional().describe("True when a total bet was actually posted for this game."),
+    total_stake: z.number().nullable().optional().describe("Stake in units on the posted total bet."),
     completed: z.boolean().optional(),
     final_margin: z.number().nullable().optional(),
     final_total: z.number().nullable().optional(),
