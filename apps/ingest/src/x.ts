@@ -62,6 +62,15 @@ export function xCredsFromEnv(): XCreds | null {
   return { apiKey, apiSecret, accessToken, accessTokenSecret };
 }
 
+/** Thrown when X rejects a post as byte-identical to one we already sent (403,
+ *  "duplicate content"). Distinct from every other failure: a duplicate means the
+ *  content was already successfully communicated, so callers should treat it as
+ *  success (mark tweeted, move on) rather than retry — retrying identical text would
+ *  just get the identical rejection forever, stalling that batch permanently. This is
+ *  most likely to bite two consecutive results tweets that round to the exact same
+ *  terse summary text (e.g. the same W-L/units line twice), not picks (which vary). */
+export class DuplicateTweetError extends Error {}
+
 export async function postTweet(text: string, creds: XCreds, replyToId?: string): Promise<string> {
   const url = "https://api.twitter.com/2/tweets";
   const body: { text: string; reply?: { in_reply_to_tweet_id: string } } = { text };
@@ -71,7 +80,11 @@ export async function postTweet(text: string, creds: XCreds, replyToId?: string)
     headers: { Authorization: oauthHeader("POST", url, creds), "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(`X post failed (${resp.status}): ${await resp.text()}`);
+  if (!resp.ok) {
+    const detail = await resp.text();
+    if (resp.status === 403 && detail.includes("duplicate content")) throw new DuplicateTweetError(detail);
+    throw new Error(`X post failed (${resp.status}): ${detail}`);
+  }
   const json = (await resp.json()) as { data: { id: string } };
   return json.data.id;
 }
@@ -84,9 +97,17 @@ export async function postThread(parts: string[], creds: XCreds): Promise<string
   const ids: string[] = [];
   let replyTo: string | undefined;
   for (const part of parts) {
-    const id = await postTweet(part, creds, replyTo);
-    ids.push(id);
-    replyTo = id;
+    try {
+      const id = await postTweet(part, creds, replyTo);
+      ids.push(id);
+      replyTo = id;
+    } catch (e) {
+      if (!(e instanceof DuplicateTweetError)) throw e;
+      // Already posted verbatim before — can't recover its id to chain the next reply
+      // to it specifically, so the next part chains onto the last tweet we DO have an
+      // id for instead. Rare (thread parts vary with the picks), worth not blocking on.
+      console.warn("Duplicate content in thread part — already posted, continuing:", part.slice(0, 60));
+    }
   }
   return ids;
 }

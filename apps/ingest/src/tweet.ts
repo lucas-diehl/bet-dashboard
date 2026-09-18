@@ -2,7 +2,7 @@ import { loadEnv } from "@bet/db/env";
 loadEnv();
 const { openDb, markBetsTweeted, markResultsTweeted } = await import("@bet/db/upsert");
 const { loadUntweetedBets, loadUntweetedResults, loadAllTimeRecordBySport } = await import("@bet/db/queries");
-const { xCredsFromEnv, postThread, postTweet, updateBio } = await import("./x.js");
+const { xCredsFromEnv, postThread, postTweet, updateBio, DuplicateTweetError } = await import("./x.js");
 const { formatPicksThread, formatResultsTweet, formatBio } = await import("./format-tweet.js");
 
 // Runs as a step after ingest in cfb.yml/nfl.yml/golf.yml (opted in per-workflow via
@@ -40,7 +40,14 @@ async function main() {
     const resultsText = formatResultsTweet(graded);
     if (resultsText) {
       console.log("Posting results tweet:\n" + resultsText);
-      await postTweet(resultsText, creds);
+      try {
+        await postTweet(resultsText, creds);
+      } catch (e) {
+        if (!(e instanceof DuplicateTweetError)) throw e;
+        // Already said, verbatim, in an earlier post — treat as done rather than get
+        // this batch of results permanently stuck retrying an identical rejection.
+        console.warn("Results tweet was a duplicate — already posted, marking tweeted anyway.");
+      }
       await markResultsTweeted(h.db, graded.map((r) => r.resultId));
       console.log(`Tweeted ${graded.length} result(s).`);
 
