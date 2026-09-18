@@ -31,10 +31,14 @@ function groupBySport<T extends { sport: string }>(rows: T[]): Map<string, T[]> 
   return m;
 }
 
-/** One pick, one line: "🏈 9/20 New Orleans Saints -3.5 (0.6u)". Totals don't carry a
- *  team in `selection` (it's just "Under 48.5"), so those get the matchup prefixed from
- *  `event` ("Away @ Home" -> "Away / Home") — full team names, since there's no reliable
- *  nickname-shortening table to lean on. */
+function formatOdds(n: number): string {
+  return n > 0 ? `+${n}` : `${n}`;
+}
+
+/** One pick, one line: "🏈 NFL: 9/20 New Orleans Saints -3.5 (-110, 0.6u)". Totals don't
+ *  carry a team in `selection` (it's just "Under 48.5"), so those get the matchup
+ *  prefixed from `event` ("Away @ Home" -> "Away / Home") — full team names, since
+ *  there's no reliable nickname-shortening table to lean on. */
 function formatPickLine(b: UntweetedBet): string {
   const { emoji, label } = sportInfo(b.sport);
   const date = formatEventDate(b.eventStart);
@@ -47,7 +51,7 @@ function formatPickLine(b: UntweetedBet): string {
   } else {
     body = b.selection;
   }
-  return `${emoji} ${label}: ${prefix}${body} (${b.stakeUnits}u)`;
+  return `${emoji} ${label}: ${prefix}${body} (${formatOdds(b.oddsAmerican)}, ${b.stakeUnits}u)`;
 }
 
 // Reserve enough room for the biggest realistic header — "🔒 999 new picks (99/99)" —
@@ -161,10 +165,11 @@ const BIO_DISCLAIMER = "Paper picks, not advice.";
  *  @bet/core's rollupBy() output — the SAME numbers /tracker's per-sport table shows, so
  *  the bio never drifts from the dashboard. Only sports with at least one decided (win
  *  or loss) bet are shown, so a sport that's only ever posted pending picks doesn't show
- *  a meaningless "0-0". Falls back in order — disclaimer w/ ROI, no disclaimer w/ ROI,
- *  disclaimer w/o ROI, no disclaimer w/o ROI, each dropping least-active sports first —
- *  until something fits X's 160-char bio limit. At today's 3-sport scale there's plenty
- *  of room for the full version; this only matters if the roster grows a lot. */
+ *  a meaningless "0-0". One sport per line for readability. Falls back in order —
+ *  disclaimer w/ ROI, no disclaimer w/ ROI, disclaimer w/o ROI, no disclaimer w/o ROI,
+ *  each dropping least-active sports first — until something fits X's 160-char bio
+ *  limit. At today's 3-sport scale there's plenty of room for the full version; this
+ *  only matters if the roster grows a lot. */
 export function formatBio(bySport: Map<string, BioSportRecord>): string {
   const active = [...bySport.entries()]
     .filter(([, r]) => r.wins + r.losses > 0)
@@ -172,12 +177,11 @@ export function formatBio(bySport: Map<string, BioSportRecord>): string {
 
   for (const withRoi of [true, false]) {
     for (let n = active.length; n > 0; n--) {
-      const breakdown = active
+      const lines = active
         .slice(0, n)
         .sort(([a], [b]) => a.localeCompare(b)) // display order: alphabetical
-        .map(([sport, r]) => sportLine(sport, r, withRoi))
-        .join(" · ");
-      for (const candidate of [`${BIO_DISCLAIMER} | ${breakdown}`, breakdown]) {
+        .map(([sport, r]) => sportLine(sport, r, withRoi));
+      for (const candidate of [[BIO_DISCLAIMER, ...lines].join("\n"), lines.join("\n")]) {
         if (candidate.length <= BIO_LIMIT) return candidate;
       }
     }

@@ -218,6 +218,7 @@ export interface UntweetedBet {
   market: string;
   selection: string;
   line: number | null;
+  oddsAmerican: number;
   stakeUnits: number;
   confidence: string | null;
 }
@@ -236,6 +237,7 @@ export async function loadUntweetedBets(db: Db): Promise<UntweetedBet[]> {
       market: bets.market,
       selection: bets.selection,
       line: bets.line,
+      oddsAmerican: bets.oddsAmerican,
       stakeUnits: bets.stakeUnits,
       confidence: bets.confidence,
     })
