@@ -43,10 +43,18 @@ async function main() {
       await markResultsTweeted(h.db, graded.map((r) => r.resultId));
       console.log(`Tweeted ${graded.length} result(s).`);
 
-      const record = await loadAllTimeRecord(h.db);
-      const bio = formatBio(record);
-      console.log("Updating bio:\n" + bio);
-      await updateBio(bio, creds);
+      // Bio failure shouldn't fail the whole step — the results tweet above already
+      // posted and is already marked tweeted, so retrying this run wouldn't re-post it
+      // anyway. account/update_profile.json is a v1.1 endpoint; if X ever gates it
+      // behind a paid tier this logs and moves on instead of red-X'ing the workflow.
+      try {
+        const record = await loadAllTimeRecord(h.db);
+        const bio = formatBio(record);
+        console.log("Updating bio:\n" + bio);
+        await updateBio(bio, creds);
+      } catch (e) {
+        console.error("Bio update failed (non-fatal):", e);
+      }
     } else {
       console.log("No new results to tweet.");
     }
