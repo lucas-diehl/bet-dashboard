@@ -50,33 +50,51 @@ function formatPickLine(b: UntweetedBet): string {
   return `${emoji} ${label}: ${prefix}${body} (${b.stakeUnits}u)`;
 }
 
-/** Batched "new picks" tweet, one pick per line, soonest kickoff first. Greedily fits as
- *  many full lines as possible under the 280-char limit, then a "+N more" line — no URL,
- *  so a heavy CFB day (20+ picks) still trims to a handful of lines rather than blowing
- *  the limit or listing everything. */
-export function formatPicksTweet(rows: UntweetedBet[]): string | null {
-  if (!rows.length) return null;
+// Reserve enough room for the biggest realistic header — "🔒 999 new picks (99/99)" —
+// so every chunk uses the same budget and the two-pass split below (chunk first, THEN
+// number the parts once the total is known) never has a chunk that turns out oversized
+// once its real header is attached.
+const PICK_HEADER_RESERVE = 40;
+
+/** Every posted pick, as a THREAD — one tweet per line if that's what it takes, no
+ *  "+N more" truncation. One pick per line, soonest kickoff first, chunked so each part
+ *  stays under 280 chars; parts are numbered ("(2/5)") once there's more than one. This
+ *  spends one API call per tweet in the thread, so a heavy week (30+ picks) costs
+ *  several credits, not one — see postThread() in x.ts for how the reply chain posts. */
+export function formatPicksThread(rows: UntweetedBet[]): string[] {
+  if (!rows.length) return [];
   const sorted = [...rows].sort((a, b) => {
     const ta = a.eventStart ? a.eventStart.getTime() : Infinity;
     const tb = b.eventStart ? b.eventStart.getTime() : Infinity;
     return ta - tb;
   });
-  const header = `🔒 ${rows.length} new pick${rows.length === 1 ? "" : "s"}`;
   const lines = sorted.map(formatPickLine);
+  const budget = X_LIMIT - PICK_HEADER_RESERVE;
 
-  const included: string[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const remainingAfterThis = lines.length - (i + 1);
-    const trailer = remainingAfterThis > 0 ? [`+${remainingAfterThis} more`] : [];
-    const candidate = [header, "", ...included, lines[i], ...trailer].join("\n");
-    if (candidate.length > X_LIMIT) {
-      const remainingNow = lines.length - included.length;
-      const fallback = [header, "", ...included, `+${remainingNow} more`].join("\n");
-      return fallback.length <= X_LIMIT ? fallback : header;
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let currentLen = 0;
+  for (const line of lines) {
+    const added = current.length ? 1 + line.length : line.length; // +1 for the newline join
+    if (current.length && currentLen + added > budget) {
+      chunks.push(current);
+      current = [line];
+      currentLen = line.length;
+    } else {
+      current.push(line);
+      currentLen += added;
     }
-    included.push(lines[i]);
   }
-  return [header, "", ...included].join("\n");
+  if (current.length) chunks.push(current);
+
+  const total = chunks.length;
+  return chunks.map((chunkLines, i) => {
+    const header =
+      total > 1
+        ? `🔒 ${rows.length} new picks (${i + 1}/${total})`
+        : `🔒 ${rows.length} new pick${rows.length === 1 ? "" : "s"}`;
+    return [header, "", ...chunkLines].join("\n");
+  });
 }
 
 /** Batched results tweet: W-L-push + net units per sport. */
@@ -117,15 +135,52 @@ export function formatWeeklyTweet(rows: { sport: string; wins: number; losses: n
   return text.length <= X_LIMIT ? text : header;
 }
 
-const BIO_DISCLAIMER = "Model-generated paper picks. Not betting advice.";
 const BIO_LIMIT = 160;
 
-/** Live all-time record for the account bio, refreshed as results grade. Uses the same
- *  Rollup shape @bet/core's rollup() returns, so this is always the /tracker numbers,
- *  never a second computation that could drift from what the dashboard shows. */
-export function formatBio(r: { wins: number; losses: number; pushes: number; units_pnl: number }): string {
+export interface BioSportRecord {
+  wins: number;
+  losses: number;
+  pushes: number;
+  units_pnl: number;
+  roi: number; // fraction, e.g. 0.34 -> "+34%"
+}
+
+function sportLine(sport: string, r: BioSportRecord, withRoi: boolean): string {
+  const { label } = sportInfo(sport);
   const record = `${r.wins}-${r.losses}${r.pushes ? `-${r.pushes}` : ""}`;
-  const sign = r.units_pnl >= 0 ? "+" : "";
-  const text = `${BIO_DISCLAIMER} | ${record} (${sign}${r.units_pnl.toFixed(2)}u)`;
-  return text.length <= BIO_LIMIT ? text : `${BIO_DISCLAIMER} | ${record}`;
+  const uSign = r.units_pnl >= 0 ? "+" : "";
+  const units = `${uSign}${r.units_pnl.toFixed(1)}u`;
+  if (!withRoi) return `${label} ${record} ${units}`;
+  const rSign = r.roi >= 0 ? "+" : "";
+  return `${label} ${record} ${units} ${rSign}${Math.round(r.roi * 100)}%`;
+}
+
+const BIO_DISCLAIMER = "Paper picks, not advice.";
+
+/** Live per-sport record for the account bio, refreshed as results grade. Built from
+ *  @bet/core's rollupBy() output — the SAME numbers /tracker's per-sport table shows, so
+ *  the bio never drifts from the dashboard. Only sports with at least one decided (win
+ *  or loss) bet are shown, so a sport that's only ever posted pending picks doesn't show
+ *  a meaningless "0-0". Falls back in order — disclaimer w/ ROI, no disclaimer w/ ROI,
+ *  disclaimer w/o ROI, no disclaimer w/o ROI, each dropping least-active sports first —
+ *  until something fits X's 160-char bio limit. At today's 3-sport scale there's plenty
+ *  of room for the full version; this only matters if the roster grows a lot. */
+export function formatBio(bySport: Map<string, BioSportRecord>): string {
+  const active = [...bySport.entries()]
+    .filter(([, r]) => r.wins + r.losses > 0)
+    .sort(([, a], [, b]) => b.wins + b.losses - (a.wins + a.losses)); // most-decided first, for the drop-order below
+
+  for (const withRoi of [true, false]) {
+    for (let n = active.length; n > 0; n--) {
+      const breakdown = active
+        .slice(0, n)
+        .sort(([a], [b]) => a.localeCompare(b)) // display order: alphabetical
+        .map(([sport, r]) => sportLine(sport, r, withRoi))
+        .join(" · ");
+      for (const candidate of [`${BIO_DISCLAIMER} | ${breakdown}`, breakdown]) {
+        if (candidate.length <= BIO_LIMIT) return candidate;
+      }
+    }
+  }
+  return "";
 }

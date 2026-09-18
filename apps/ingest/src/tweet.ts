@@ -1,17 +1,17 @@
 import { loadEnv } from "@bet/db/env";
 loadEnv();
 const { openDb, markBetsTweeted, markResultsTweeted } = await import("@bet/db/upsert");
-const { loadUntweetedBets, loadUntweetedResults, loadAllTimeRecord } = await import("@bet/db/queries");
-const { xCredsFromEnv, postTweet, updateBio } = await import("./x.js");
-const { formatPicksTweet, formatResultsTweet, formatBio } = await import("./format-tweet.js");
+const { loadUntweetedBets, loadUntweetedResults, loadAllTimeRecordBySport } = await import("@bet/db/queries");
+const { xCredsFromEnv, postThread, postTweet, updateBio } = await import("./x.js");
+const { formatPicksThread, formatResultsTweet, formatBio } = await import("./format-tweet.js");
 
 // Runs as a step after ingest in cfb.yml/nfl.yml/golf.yml (opted in per-workflow via
 // the ingest composite action's post-to-x input — dfs.yml does NOT opt in, so DFS
 // lineups never post). Batches whatever's pending since the last successful run into
-// at most 2 tweets (new picks, then results) — free-tier volume stays low regardless
-// of which/how many workflows ran today, since each bet/result is only ever queued
-// once (tweetedAt null -> set). Also refreshes the account bio with the live all-time
-// record whenever a results tweet actually posts ("as results come in").
+// a picks thread (every pick, no truncation — see formatPicksThread) plus one results
+// tweet, since each bet/result is only ever queued once (tweetedAt null -> set). Also
+// refreshes the account bio with the live per-sport record whenever a results tweet
+// actually posts ("as results come in").
 
 async function main() {
   const creds = xCredsFromEnv();
@@ -25,12 +25,13 @@ async function main() {
   const h = openDb(url);
   try {
     const pending = await loadUntweetedBets(h.db);
-    const picksText = formatPicksTweet(pending);
-    if (picksText) {
-      console.log("Posting picks tweet:\n" + picksText);
-      await postTweet(picksText, creds);
+    const parts = formatPicksThread(pending);
+    if (parts.length) {
+      console.log(`Posting picks thread (${parts.length} tweet(s)):`);
+      parts.forEach((p, i) => console.log(`--- part ${i + 1}/${parts.length} ---\n${p}`));
+      await postThread(parts, creds);
       await markBetsTweeted(h.db, pending.map((b) => b.id));
-      console.log(`Tweeted ${pending.length} new pick(s).`);
+      console.log(`Tweeted ${pending.length} new pick(s) across ${parts.length} tweet(s).`);
     } else {
       console.log("No new picks to tweet.");
     }
@@ -48,8 +49,8 @@ async function main() {
       // anyway. account/update_profile.json is a v1.1 endpoint; if X ever gates it
       // behind a paid tier this logs and moves on instead of red-X'ing the workflow.
       try {
-        const record = await loadAllTimeRecord(h.db);
-        const bio = formatBio(record);
+        const bySport = await loadAllTimeRecordBySport(h.db);
+        const bio = formatBio(bySport);
         console.log("Updating bio:\n" + bio);
         await updateBio(bio, creds);
       } catch (e) {

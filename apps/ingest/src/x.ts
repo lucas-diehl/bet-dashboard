@@ -62,16 +62,33 @@ export function xCredsFromEnv(): XCreds | null {
   return { apiKey, apiSecret, accessToken, accessTokenSecret };
 }
 
-export async function postTweet(text: string, creds: XCreds): Promise<string> {
+export async function postTweet(text: string, creds: XCreds, replyToId?: string): Promise<string> {
   const url = "https://api.twitter.com/2/tweets";
+  const body: { text: string; reply?: { in_reply_to_tweet_id: string } } = { text };
+  if (replyToId) body.reply = { in_reply_to_tweet_id: replyToId };
   const resp = await fetch(url, {
     method: "POST",
     headers: { Authorization: oauthHeader("POST", url, creds), "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify(body),
   });
   if (!resp.ok) throw new Error(`X post failed (${resp.status}): ${await resp.text()}`);
   const json = (await resp.json()) as { data: { id: string } };
   return json.data.id;
+}
+
+/** Post a sequence of tweets as one thread — each replies to the one before it. One API
+ *  call per part, so a long thread costs proportionally more credits than a single tweet
+ *  (see formatPicksThread in format-tweet.ts). Stops and throws on the first failure —
+ *  a partial thread with a missing middle tweet is worse than not posting the rest. */
+export async function postThread(parts: string[], creds: XCreds): Promise<string[]> {
+  const ids: string[] = [];
+  let replyTo: string | undefined;
+  for (const part of parts) {
+    const id = await postTweet(part, creds, replyTo);
+    ids.push(id);
+    replyTo = id;
+  }
+  return ids;
 }
 
 /** Overwrite the account bio. This is a v1.1 endpoint (X's v2 API has no general

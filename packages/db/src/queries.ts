@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
-import { rollup, type GradedRow, type Rollup } from "@bet/core";
+import { rollup, rollupBy, type GradedRow, type Rollup } from "@bet/core";
 import type { Db } from "./upsert";
 import { assets, bets, dfsPools, dfsValues, eloRatings, modelBoards, results, slates } from "./schema";
 
@@ -313,11 +313,11 @@ export async function loadWeeklySummary(db: Db, since: Date): Promise<WeeklySpor
   return [...bySport.values()].sort((a, b) => a.sport.localeCompare(b.sport));
 }
 
-/** All-time record across every sport, via @bet/core's rollup() — the SAME function the
- *  /tracker page's top tiles use, so the bio's number never diverges from what's shown
- *  on the dashboard. Left-joins results so ungraded bets count as "pending" like rollup()
- *  expects, rather than being silently dropped by an inner join. */
-export async function loadAllTimeRecord(db: Db): Promise<Rollup> {
+/** Every bet joined to its grade (if any), shaped for @bet/core's rollup functions.
+ *  Left-joins results so ungraded bets count as "pending" like rollup() expects, rather
+ *  than being silently dropped by an inner join. Shared by the overall and per-sport
+ *  record loaders below so both are computed from the exact same row set. */
+async function loadGradedRows(db: Db): Promise<GradedRow[]> {
   const rows = await db
     .select({
       sport: bets.sport,
@@ -331,7 +331,7 @@ export async function loadAllTimeRecord(db: Db): Promise<Rollup> {
     })
     .from(bets)
     .leftJoin(results, eq(results.betPk, bets.id));
-  const graded: GradedRow[] = rows.map((r) => ({
+  return rows.map((r) => ({
     sport: r.sport,
     slate_date: String(r.slateDate),
     market: r.market,
@@ -341,5 +341,17 @@ export async function loadAllTimeRecord(db: Db): Promise<Rollup> {
     pnl_units: r.pnlUnits,
     clv_pct: r.clvPct,
   }));
-  return rollup(graded);
+}
+
+/** All-time record across every sport, via @bet/core's rollup() — the SAME function the
+ *  /tracker page's top tiles use, so the bio's number never diverges from what's shown
+ *  on the dashboard. */
+export async function loadAllTimeRecord(db: Db): Promise<Rollup> {
+  return rollup(await loadGradedRows(db));
+}
+
+/** All-time record PER SPORT, via @bet/core's rollupBy() — the same function /tracker's
+ *  per-sport table uses, so the bio's breakdown matches that table exactly. */
+export async function loadAllTimeRecordBySport(db: Db): Promise<Map<string, Rollup>> {
+  return rollupBy(await loadGradedRows(db), "sport");
 }
