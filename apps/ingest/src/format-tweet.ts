@@ -47,7 +47,7 @@ function formatPickLine(b: UntweetedBet): string {
   } else {
     body = b.selection;
   }
-  return `${emoji} ${label} ${prefix}${body} (${b.stakeUnits}u)`;
+  return `${emoji} ${label}: ${prefix}${body} (${b.stakeUnits}u)`;
 }
 
 /** Batched "new picks" tweet, one pick per line, soonest kickoff first. Greedily fits as
