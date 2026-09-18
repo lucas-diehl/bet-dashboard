@@ -56,6 +56,7 @@ export const bets = pgTable(
     tier: text("tier"),
     tags: jsonb("tags").$type<string[]>(),
     details: jsonb("details").$type<Record<string, unknown>>(),
+    tweetedAt: timestamp("tweeted_at", { withTimezone: true }), // set once the "new pick" tweet goes out
   },
   (t) => ({ uniq: uniqueIndex("bets_source_betid").on(t.source, t.betId) }),
 );
@@ -76,6 +77,7 @@ export const results = pgTable(
     cashed: boolean("cashed"),
     gradedAt: timestamp("graded_at", { withTimezone: true }),
     actual: jsonb("actual").$type<Record<string, unknown>>(),
+    tweetedAt: timestamp("tweeted_at", { withTimezone: true }), // set once the "result" tweet goes out
   },
   (t) => ({ uniq: uniqueIndex("results_source_betid").on(t.source, t.betId) }),
 );

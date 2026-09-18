@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
-    "dry": "tsx src/index.ts --dry"
+    "dry": "tsx src/index.ts --dry",
+    "tweet": "tsx src/tweet.ts",
+    "tweet:weekly": "tsx src/weekly-tweet.ts"
   },
   "dependencies": {
     "@bet/contract": "workspace:*",

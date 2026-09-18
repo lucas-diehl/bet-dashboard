@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { isLatePgaOutright, type PicksFile, type ResultsFile, type ValuesFile, type EloFile, type PoolFile, type BoardFile } from "@bet/contract";
@@ -335,4 +335,17 @@ export async function deletePoolById(db: Db, id: number) {
  *  any associated result row (results.bet_pk -> bets.id, onDelete: cascade). */
 export async function deleteBetByBetId(db: Db, source: string, betId: string) {
   await db.delete(bets).where(and(eq(bets.source, source), eq(bets.betId, betId)));
+}
+
+/** Mark bets as announced on X, after a successful post — so the next run's
+ *  loadUntweetedBets() doesn't re-announce them. */
+export async function markBetsTweeted(db: Db, ids: number[]) {
+  if (!ids.length) return;
+  await db.update(bets).set({ tweetedAt: new Date() }).where(inArray(bets.id, ids));
+}
+
+/** Mark results as announced on X, after a successful post. */
+export async function markResultsTweeted(db: Db, ids: number[]) {
+  if (!ids.length) return;
+  await db.update(results).set({ tweetedAt: new Date() }).where(inArray(results.id, ids));
 }

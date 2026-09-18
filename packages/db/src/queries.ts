@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import type { Db } from "./upsert";
 import { assets, bets, dfsPools, dfsValues, eloRatings, modelBoards, results, slates } from "./schema";
 
@@ -205,4 +205,107 @@ export async function loadEloFromDb(db: Db): Promise<EloFile[]> {
     });
   }
   return [...bykey.values()];
+}
+
+/** A single posted pick not yet announced on X. */
+export interface UntweetedBet {
+  id: number;
+  source: string;
+  sport: string;
+  event: string | null;
+  market: string;
+  selection: string;
+  line: number | null;
+  stakeUnits: number;
+  confidence: string | null;
+}
+
+/** Bets with tweetedAt still null — the "new pick" queue. Existing bets are backfilled
+ *  with tweetedAt at feature-launch time (see the one-off script), so this only ever
+ *  returns picks posted AFTER X posting went live. */
+export async function loadUntweetedBets(db: Db): Promise<UntweetedBet[]> {
+  const rows = await db
+    .select({
+      id: bets.id,
+      source: bets.source,
+      sport: bets.sport,
+      event: bets.event,
+      market: bets.market,
+      selection: bets.selection,
+      line: bets.line,
+      stakeUnits: bets.stakeUnits,
+      confidence: bets.confidence,
+    })
+    .from(bets)
+    .where(isNull(bets.tweetedAt))
+    .orderBy(bets.sport, bets.event);
+  return rows;
+}
+
+/** A single graded result not yet announced on X. */
+export interface UntweetedResult {
+  resultId: number;
+  source: string;
+  sport: string;
+  event: string | null;
+  market: string;
+  selection: string;
+  line: number | null;
+  result: string;
+  pnlUnits: number | null;
+}
+
+/** Results with tweetedAt still null, joined back to the bet for display fields.
+ *  Only bets that were THEMSELVES already tweeted are eligible — a result should never
+ *  announce before its own pick did (keeps the timeline coherent even if a grading run
+ *  races ahead of a posting run). */
+export async function loadUntweetedResults(db: Db): Promise<UntweetedResult[]> {
+  const rows = await db
+    .select({
+      resultId: results.id,
+      source: results.source,
+      sport: bets.sport,
+      event: bets.event,
+      market: bets.market,
+      selection: bets.selection,
+      line: bets.line,
+      result: results.result,
+      pnlUnits: results.pnlUnits,
+    })
+    .from(results)
+    .innerJoin(bets, eq(results.betPk, bets.id))
+    .where(and(isNull(results.tweetedAt), sql`${bets.tweetedAt} is not null`))
+    .orderBy(bets.sport, bets.event);
+  return rows;
+}
+
+export interface WeeklySportSummary {
+  sport: string;
+  wins: number;
+  losses: number;
+  pushes: number;
+  pnlUnits: number;
+}
+
+/** W/L/push + net units per sport for results graded since `since`, for the weekly recap. */
+export async function loadWeeklySummary(db: Db, since: Date): Promise<WeeklySportSummary[]> {
+  const rows = await db
+    .select({
+      sport: bets.sport,
+      result: results.result,
+      pnlUnits: results.pnlUnits,
+    })
+    .from(results)
+    .innerJoin(bets, eq(results.betPk, bets.id))
+    .where(and(gte(results.gradedAt, since), sql`${results.result} in ('win','loss','push')`));
+  const bySport = new Map<string, WeeklySportSummary>();
+  for (const r of rows) {
+    let s = bySport.get(r.sport);
+    if (!s) { s = { sport: r.sport, wins: 0, losses: 0, pushes: 0, pnlUnits: 0 }; bySport.set(r.sport, s); }
+    if (r.result === "win") s.wins++;
+    else if (r.result === "loss") s.losses++;
+    else if (r.result === "push") s.pushes++;
+    s.pnlUnits += r.pnlUnits ?? 0;
+  }
+  return [...bySport.values()].sort((a, b) => a.sport.localeCompare(b.sport));
 }
