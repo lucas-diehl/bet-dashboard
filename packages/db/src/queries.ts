@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
+import { rollup, type GradedRow, type Rollup } from "@bet/core";
 import type { Db } from "./upsert";
 import { assets, bets, dfsPools, dfsValues, eloRatings, modelBoards, results, slates } from "./schema";
 
@@ -213,6 +214,7 @@ export interface UntweetedBet {
   source: string;
   sport: string;
   event: string | null;
+  eventStart: Date | null;
   market: string;
   selection: string;
   line: number | null;
@@ -230,6 +232,7 @@ export async function loadUntweetedBets(db: Db): Promise<UntweetedBet[]> {
       source: bets.source,
       sport: bets.sport,
       event: bets.event,
+      eventStart: bets.eventStart,
       market: bets.market,
       selection: bets.selection,
       line: bets.line,
@@ -238,7 +241,7 @@ export async function loadUntweetedBets(db: Db): Promise<UntweetedBet[]> {
     })
     .from(bets)
     .where(isNull(bets.tweetedAt))
-    .orderBy(bets.sport, bets.event);
+    .orderBy(bets.eventStart, bets.sport);
   return rows;
 }
 
@@ -308,4 +311,35 @@ export async function loadWeeklySummary(db: Db, since: Date): Promise<WeeklySpor
     s.pnlUnits += r.pnlUnits ?? 0;
   }
   return [...bySport.values()].sort((a, b) => a.sport.localeCompare(b.sport));
+}
+
+/** All-time record across every sport, via @bet/core's rollup() — the SAME function the
+ *  /tracker page's top tiles use, so the bio's number never diverges from what's shown
+ *  on the dashboard. Left-joins results so ungraded bets count as "pending" like rollup()
+ *  expects, rather than being silently dropped by an inner join. */
+export async function loadAllTimeRecord(db: Db): Promise<Rollup> {
+  const rows = await db
+    .select({
+      sport: bets.sport,
+      slateDate: bets.slateDate,
+      market: bets.market,
+      oddsAmerican: bets.oddsAmerican,
+      stakeUnits: bets.stakeUnits,
+      result: results.result,
+      pnlUnits: results.pnlUnits,
+      clvPct: results.clvPct,
+    })
+    .from(bets)
+    .leftJoin(results, eq(results.betPk, bets.id));
+  const graded: GradedRow[] = rows.map((r) => ({
+    sport: r.sport,
+    slate_date: String(r.slateDate),
+    market: r.market,
+    odds_american: r.oddsAmerican,
+    stake_units: r.stakeUnits,
+    result: (r.result as GradedRow["result"]) ?? "pending",
+    pnl_units: r.pnlUnits,
+    clv_pct: r.clvPct,
+  }));
+  return rollup(graded);
 }

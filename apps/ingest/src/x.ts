@@ -18,7 +18,10 @@ function pctEncode(s: string): string {
   return encodeURIComponent(s).replace(/[!*'()]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
 }
 
-function oauthHeader(method: string, url: string, creds: XCreds): string {
+// `bodyParams`: OAuth 1.0a requires application/x-www-form-urlencoded body params to be
+// folded INTO the signature (unlike a JSON body, which is never signed) — needed for
+// account/update_profile.json below, not for the JSON tweet-posting call.
+function oauthHeader(method: string, url: string, creds: XCreds, bodyParams: Record<string, string> = {}): string {
   const oauthParams: Record<string, string> = {
     oauth_consumer_key: creds.apiKey,
     oauth_nonce: randomBytes(16).toString("hex"),
@@ -27,13 +30,16 @@ function oauthHeader(method: string, url: string, creds: XCreds): string {
     oauth_token: creds.accessToken,
     oauth_version: "1.0",
   };
-  const paramString = Object.keys(oauthParams)
+  const signedParams = { ...oauthParams, ...bodyParams };
+  const paramString = Object.keys(signedParams)
     .sort()
-    .map((k) => `${pctEncode(k)}=${pctEncode(oauthParams[k])}`)
+    .map((k) => `${pctEncode(k)}=${pctEncode(signedParams[k])}`)
     .join("&");
   const baseString = `${method}&${pctEncode(url)}&${pctEncode(paramString)}`;
   const signingKey = `${pctEncode(creds.apiSecret)}&${pctEncode(creds.accessTokenSecret)}`;
   const signature = createHmac("sha1", signingKey).update(baseString).digest("base64");
+  // only oauth_* params (+ the signature) go in the header — bodyParams travel in the
+  // actual request body, they're only folded into the signature computation above.
   const headerParams: Record<string, string> = { ...oauthParams, oauth_signature: signature };
   return (
     "OAuth " +
@@ -66,4 +72,21 @@ export async function postTweet(text: string, creds: XCreds): Promise<string> {
   if (!resp.ok) throw new Error(`X post failed (${resp.status}): ${await resp.text()}`);
   const json = (await resp.json()) as { data: { id: string } };
   return json.data.id;
+}
+
+/** Overwrite the account bio. This is a v1.1 endpoint (X's v2 API has no general
+ *  profile-update route yet) — still works with the same OAuth 1.0a user-context creds.
+ *  X's bio field caps at 160 chars; callers should keep formatBio() under that. */
+export async function updateBio(description: string, creds: XCreds): Promise<void> {
+  const url = "https://api.twitter.com/1.1/account/update_profile.json";
+  const params = { description };
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: oauthHeader("POST", url, creds, params),
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams(params).toString(),
+  });
+  if (!resp.ok) throw new Error(`X bio update failed (${resp.status}): ${await resp.text()}`);
 }

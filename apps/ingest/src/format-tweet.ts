@@ -1,24 +1,24 @@
 import type { UntweetedBet, UntweetedResult } from "@bet/db/queries";
 
-export const DASHBOARD_URL = "https://bet-dashboard-blond.vercel.app";
 const X_LIMIT = 280;
 
 const SPORT_LABEL: Record<string, { emoji: string; label: string }> = {
   cfb: { emoji: "🏈", label: "CFB" },
   ncaaf: { emoji: "🏈", label: "CFB" },
   nfl: { emoji: "🏈", label: "NFL" },
-  golf: { emoji: "⛳", label: "Golf" },
-  pga: { emoji: "⛳", label: "Golf" },
-  tennis: { emoji: "🎾", label: "Tennis" },
+  golf: { emoji: "⛳", label: "PGA" },
+  pga: { emoji: "⛳", label: "PGA" },
+  tennis: { emoji: "🎾", label: "TEN" },
   wnba: { emoji: "🏀", label: "WNBA" },
 };
 function sportInfo(sport: string) {
   return SPORT_LABEL[sport] ?? { emoji: "🎯", label: sport.toUpperCase() };
 }
 
-function formatSelection(market: string, selection: string, line: number | null): string {
-  if (market === "spread" && line != null) return `${selection} ${line > 0 ? "+" : ""}${line}`;
-  return selection;
+function formatEventDate(d: Date | null): string {
+  if (!d) return "";
+  // kickoff date, ET (matches how the dashboard shows game times elsewhere)
+  return new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "numeric", day: "numeric" }).format(d);
 }
 
 function groupBySport<T extends { sport: string }>(rows: T[]): Map<string, T[]> {
@@ -31,33 +31,52 @@ function groupBySport<T extends { sport: string }>(rows: T[]): Map<string, T[]> 
   return m;
 }
 
-/** Batched "new picks" tweet across every sport with a pending pick. Lists individual
- *  picks per sport up to the 280-char budget, then falls back to a count-only line for
- *  that sport (and finally for the whole tweet) if the detailed version won't fit —
- *  free-tier volume stays low either way since this is one tweet per run, not per pick. */
+/** One pick, one line: "🏈 9/20 New Orleans Saints -3.5 (0.6u)". Totals don't carry a
+ *  team in `selection` (it's just "Under 48.5"), so those get the matchup prefixed from
+ *  `event` ("Away @ Home" -> "Away / Home") — full team names, since there's no reliable
+ *  nickname-shortening table to lean on. */
+function formatPickLine(b: UntweetedBet): string {
+  const { emoji, label } = sportInfo(b.sport);
+  const date = formatEventDate(b.eventStart);
+  const prefix = date ? `${date} ` : "";
+  let body: string;
+  if (b.market === "total" && b.event) {
+    body = `${b.event.replace(" @ ", " / ")} ${b.selection}`;
+  } else if (b.market === "spread" && b.line != null) {
+    body = `${b.selection} ${b.line > 0 ? "+" : ""}${b.line}`;
+  } else {
+    body = b.selection;
+  }
+  return `${emoji} ${label} ${prefix}${body} (${b.stakeUnits}u)`;
+}
+
+/** Batched "new picks" tweet, one pick per line, soonest kickoff first. Greedily fits as
+ *  many full lines as possible under the 280-char limit, then a "+N more" line — no URL,
+ *  so a heavy CFB day (20+ picks) still trims to a handful of lines rather than blowing
+ *  the limit or listing everything. */
 export function formatPicksTweet(rows: UntweetedBet[]): string | null {
   if (!rows.length) return null;
-  const groups = groupBySport(rows);
-  const header = `🔒 ${rows.length} new pick${rows.length === 1 ? "" : "s"}`;
-  const footer = `Full board → ${DASHBOARD_URL}`;
-
-  const lines: string[] = [];
-  for (const [sport, picks] of groups) {
-    const { emoji, label } = sportInfo(sport);
-    const items = picks.map((p) => `${formatSelection(p.market, p.selection, p.line)} (${p.stakeUnits}u)`);
-    lines.push(`${emoji} ${label} (${picks.length}): ${items.join(", ")}`);
-  }
-
-  const detailed = [header, "", ...lines, "", footer].join("\n");
-  if (detailed.length <= X_LIMIT) return detailed;
-
-  // fall back to count-only per sport
-  const summaryLines = [...groups.entries()].map(([sport, picks]) => {
-    const { emoji, label } = sportInfo(sport);
-    return `${emoji} ${label}: ${picks.length}`;
+  const sorted = [...rows].sort((a, b) => {
+    const ta = a.eventStart ? a.eventStart.getTime() : Infinity;
+    const tb = b.eventStart ? b.eventStart.getTime() : Infinity;
+    return ta - tb;
   });
-  const summary = [header, "", ...summaryLines, "", footer].join("\n");
-  return summary.length <= X_LIMIT ? summary : `${header}\n\n${footer}`;
+  const header = `🔒 ${rows.length} new pick${rows.length === 1 ? "" : "s"}`;
+  const lines = sorted.map(formatPickLine);
+
+  const included: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const remainingAfterThis = lines.length - (i + 1);
+    const trailer = remainingAfterThis > 0 ? [`+${remainingAfterThis} more`] : [];
+    const candidate = [header, "", ...included, lines[i], ...trailer].join("\n");
+    if (candidate.length > X_LIMIT) {
+      const remainingNow = lines.length - included.length;
+      const fallback = [header, "", ...included, `+${remainingNow} more`].join("\n");
+      return fallback.length <= X_LIMIT ? fallback : header;
+    }
+    included.push(lines[i]);
+  }
+  return [header, "", ...included].join("\n");
 }
 
 /** Batched results tweet: W-L-push + net units per sport. */
@@ -65,7 +84,6 @@ export function formatResultsTweet(rows: UntweetedResult[]): string | null {
   if (!rows.length) return null;
   const groups = groupBySport(rows);
   const header = `📊 ${rows.length} result${rows.length === 1 ? "" : "s"}`;
-  const footer = `Full board → ${DASHBOARD_URL}`;
 
   const lines = [...groups.entries()].map(([sport, results]) => {
     const { emoji, label } = sportInfo(sport);
@@ -78,8 +96,8 @@ export function formatResultsTweet(rows: UntweetedResult[]): string | null {
     return `${emoji} ${label}: ${record} (${sign}${units.toFixed(2)}u)`;
   });
 
-  const text = [header, "", ...lines, "", footer].join("\n");
-  return text.length <= X_LIMIT ? text : `${header}\n\n${footer}`;
+  const text = [header, "", ...lines].join("\n");
+  return text.length <= X_LIMIT ? text : header;
 }
 
 /** Once-weekly recap across all sports. */
@@ -95,6 +113,19 @@ export function formatWeeklyTweet(rows: { sport: string; wins: number; losses: n
     const { label } = sportInfo(r.sport);
     return `${label} ${r.wins}-${r.losses}${r.pushes ? `-${r.pushes}` : ""}`;
   });
-  const text = [header, lines.join(" · "), DASHBOARD_URL].join("\n");
-  return text.length <= X_LIMIT ? text : `${header}\n${DASHBOARD_URL}`;
+  const text = [header, lines.join(" · ")].join("\n");
+  return text.length <= X_LIMIT ? text : header;
+}
+
+const BIO_DISCLAIMER = "Model-generated paper picks. Not betting advice.";
+const BIO_LIMIT = 160;
+
+/** Live all-time record for the account bio, refreshed as results grade. Uses the same
+ *  Rollup shape @bet/core's rollup() returns, so this is always the /tracker numbers,
+ *  never a second computation that could drift from what the dashboard shows. */
+export function formatBio(r: { wins: number; losses: number; pushes: number; units_pnl: number }): string {
+  const record = `${r.wins}-${r.losses}${r.pushes ? `-${r.pushes}` : ""}`;
+  const sign = r.units_pnl >= 0 ? "+" : "";
+  const text = `${BIO_DISCLAIMER} | ${record} (${sign}${r.units_pnl.toFixed(2)}u)`;
+  return text.length <= BIO_LIMIT ? text : `${BIO_DISCLAIMER} | ${record}`;
 }
