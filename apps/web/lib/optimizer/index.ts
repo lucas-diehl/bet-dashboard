@@ -166,11 +166,12 @@ export function generateLineups(pool: Pool, settings: OptSettings): OptResult {
   const expo = new Map<number, number>();
   const seen = new Set<string>();
   let curOverlap = maxOverlap;
-  const tryFill = (ov: number): number => {
+  let curCap = capCount;
+  const tryFill = (ov: number, cap: number): number => {
     let added = 0;
     for (const c of scored) {
       if (chosen.length >= settings.nLineups) break;
-      if (c.players.some((p) => (expo.get(p) ?? 0) >= capCount)) continue;
+      if (c.players.some((p) => (expo.get(p) ?? 0) >= cap)) continue;
       const k = sortKey(c.players);
       if (seen.has(k)) continue;
       if (chosen.some((o) => { const set = new Set(o.players); return c.players.filter((p) => set.has(p)).length > ov; })) continue;
@@ -181,19 +182,25 @@ export function generateLineups(pool: Pool, settings: OptSettings): OptResult {
     }
     return added;
   };
-  tryFill(curOverlap);
-  // GUARANTEE the full requested count when the candidate set allows it. A tight
-  // overlap cap combined with a thin candidate list can exhaust this greedy pass
-  // well short of nLineups even though more legal (just more similar) lineups
-  // exist -- this used to be silent (a real showdown asked for 20, got 15, with
-  // nothing telling the user why). Relax the cap one player at a time; stop as
-  // soon as a looser cap stops helping, so the final cap stays as tight as it
-  // actually needed to be, not the loosest the loop happened to reach. Mirrors
-  // the same fix shipped on the R engine side (spine/R/portfolio.R) the same day.
+  tryFill(curOverlap, curCap);
+
+  // GUARANTEE the requested count. The single greedy pass above stops as soon as
+  // every remaining candidate is blocked, and then silently returns fewer lineups
+  // than asked for -- a real showdown asked for 20 and got 15 with no explanation.
+  //
+  // On a single-game slate the EXPOSURE cap is almost always what binds, not the
+  // overlap cap: gpp20 sets maxOverlap = n - 1 (5 of 6, i.e. barely a constraint)
+  // while capCount = ceil(0.5 * 20) = 10, so once the handful of genuinely good
+  // players each hit 10 appearances EVERY remaining candidate is blocked. Relaxing
+  // overlap alone therefore does nothing. Relax overlap first (cheap, preserves
+  // uniqueness), then step the exposure cap up until the set is full.
   while (chosen.length < settings.nLineups && curOverlap < n - 1) {
     curOverlap += 1;
-    const added = tryFill(curOverlap);
-    if (added === 0) { curOverlap -= 1; break; }
+    if (tryFill(curOverlap, curCap) === 0) { curOverlap -= 1; break; }
+  }
+  while (chosen.length < settings.nLineups && curCap < settings.nLineups) {
+    curCap += 1;
+    tryFill(curOverlap, curCap);
   }
 
   const lineups: OptLineup[] = chosen.map((c) => {
