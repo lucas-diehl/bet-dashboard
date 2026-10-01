@@ -165,15 +165,35 @@ export function generateLineups(pool: Pool, settings: OptSettings): OptResult {
   const chosen: typeof scored = [];
   const expo = new Map<number, number>();
   const seen = new Set<string>();
-  for (const c of scored) {
-    if (chosen.length >= settings.nLineups) break;
-    if (c.players.some((p) => (expo.get(p) ?? 0) >= capCount)) continue;
-    const k = sortKey(c.players);
-    if (seen.has(k)) continue;
-    if (chosen.some((o) => { const set = new Set(o.players); return c.players.filter((p) => set.has(p)).length > maxOverlap; })) continue;
-    chosen.push(c);
-    seen.add(k);
-    for (const p of c.players) expo.set(p, (expo.get(p) ?? 0) + 1);
+  let curOverlap = maxOverlap;
+  const tryFill = (ov: number): number => {
+    let added = 0;
+    for (const c of scored) {
+      if (chosen.length >= settings.nLineups) break;
+      if (c.players.some((p) => (expo.get(p) ?? 0) >= capCount)) continue;
+      const k = sortKey(c.players);
+      if (seen.has(k)) continue;
+      if (chosen.some((o) => { const set = new Set(o.players); return c.players.filter((p) => set.has(p)).length > ov; })) continue;
+      chosen.push(c);
+      seen.add(k);
+      for (const p of c.players) expo.set(p, (expo.get(p) ?? 0) + 1);
+      added++;
+    }
+    return added;
+  };
+  tryFill(curOverlap);
+  // GUARANTEE the full requested count when the candidate set allows it. A tight
+  // overlap cap combined with a thin candidate list can exhaust this greedy pass
+  // well short of nLineups even though more legal (just more similar) lineups
+  // exist -- this used to be silent (a real showdown asked for 20, got 15, with
+  // nothing telling the user why). Relax the cap one player at a time; stop as
+  // soon as a looser cap stops helping, so the final cap stays as tight as it
+  // actually needed to be, not the loosest the loop happened to reach. Mirrors
+  // the same fix shipped on the R engine side (spine/R/portfolio.R) the same day.
+  while (chosen.length < settings.nLineups && curOverlap < n - 1) {
+    curOverlap += 1;
+    const added = tryFill(curOverlap);
+    if (added === 0) { curOverlap -= 1; break; }
   }
 
   const lineups: OptLineup[] = chosen.map((c) => {
