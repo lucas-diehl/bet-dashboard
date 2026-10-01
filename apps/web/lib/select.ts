@@ -86,10 +86,11 @@ export interface TrackerData {
 
 /** Graded-only view for the tracker (pending bets excluded from P&L math).
  *  Anchored to the real calendar day, and filterable by LIVE/PAPER mode. */
-export function trackerData(ds: Dataset, range: Range, sport: string | null, mode: TrackerMode = "all"): TrackerData {
+export function trackerData(ds: Dataset, range: Range, sport: string | null, book: string | null = null, mode: TrackerMode = "all"): TrackerData {
   const anchor = appToday();
   let bets = withinRange(ds.bets, range, anchor);
   if (sport) bets = bets.filter((b) => b.sport === sport);
+  if (book) bets = bets.filter((b) => b.book === book);
   if (mode !== "all") bets = bets.filter((b) => b.mode === mode);
   const rows = toGradedRows(bets);
   const bySportMap = new Map<string, GradedRow[]>();

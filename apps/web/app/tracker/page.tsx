@@ -33,23 +33,30 @@ const RANGES: { k: Range; label: string }[] = [
   { k: "all", label: "All" },
 ];
 
-export default async function TrackerPage({ searchParams }: { searchParams: Promise<{ range?: string; sport?: string }> }) {
+export default async function TrackerPage({ searchParams }: { searchParams: Promise<{ range?: string; sport?: string; book?: string }> }) {
   const sp = await searchParams;
   const range = (["30", "90", "365", "all"].includes(sp.range ?? "") ? sp.range : "all") as Range;
   const sport = sp.sport && SPORTS[sp.sport] ? sp.sport : null;
 
   const ds = await loadDataset();
-  const t = trackerData(ds, range, sport);
-  const o = t.overall;
   const availableSports = [...new Set(ds.bets.map((b) => b.sport))].sort((a, b) => sportRank(a) - sportRank(b));
-
-  // Per-bet ledger, respecting the active range + sport filters, most recent first.
+  // Books available within the active range+sport (not the whole dataset), so e.g.
+  // switching to a sport that only ever posts on one book doesn't leave a dead filter.
   const anchor = appToday();
-  const logBets = withinRange(ds.bets, range, anchor)
-    .filter((b) => !sport || b.sport === sport)
+  const scopedForBooks = withinRange(ds.bets, range, anchor).filter((b) => !sport || b.sport === sport);
+  const availableBooks = [...new Set(scopedForBooks.map((b) => b.book).filter((b): b is string => !!b))].sort();
+  const book = sp.book && availableBooks.includes(sp.book) ? sp.book : null;
+
+  const t = trackerData(ds, range, sport, book);
+  const o = t.overall;
+
+  // Per-bet ledger, respecting the active range + sport + book filters, most recent first.
+  const logBets = scopedForBooks
+    .filter((b) => !book || b.book === book)
     .sort((a, b) => (a.slate_date !== b.slate_date ? (a.slate_date < b.slate_date ? 1 : -1) : (b.ev_pct ?? -1) - (a.ev_pct ?? -1)));
 
-  const href = (r: Range, s: string | null) => `/tracker?range=${r}${s ? `&sport=${s}` : ""}`;
+  const href = (r: Range, s: string | null, bk: string | null = book) =>
+    `/tracker?range=${r}${s ? `&sport=${s}` : ""}${bk ? `&book=${encodeURIComponent(bk)}` : ""}`;
 
   return (
     <>
@@ -70,6 +77,14 @@ export default async function TrackerPage({ searchParams }: { searchParams: Prom
             <Link key={s} href={href(range, s)} className={cls(sport === s && "on")}>{sportMeta(s).label}</Link>
           ))}
         </div>
+        {availableBooks.length > 1 ? (
+          <div className="seg">
+            <Link href={href(range, sport, null)} className={cls(!book && "on")}>All books</Link>
+            {availableBooks.map((bk) => (
+              <Link key={bk} href={href(range, sport, bk)} className={cls(book === bk && "on")}>{bk}</Link>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <div className="tiles" style={{ marginTop: 14 }}>
@@ -82,7 +97,7 @@ export default async function TrackerPage({ searchParams }: { searchParams: Prom
       <div className="section">
         <div className="chart-card">
           <div className="chart-title">Bankroll (cumulative units)</div>
-          <div className="chart-sub">{sport ? sportMeta(sport).full : "All sports"} · {range === "all" ? "full history" : `last ${range} days`}</div>
+          <div className="chart-sub">{sport ? sportMeta(sport).full : "All sports"}{book ? ` · ${book}` : ""} · {range === "all" ? "full history" : `last ${range} days`}</div>
           <BankrollChart points={t.curve} />
         </div>
       </div>

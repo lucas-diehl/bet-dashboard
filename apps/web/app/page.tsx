@@ -8,7 +8,7 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-export default async function TodayPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
+export default async function TodayPage({ searchParams }: { searchParams: Promise<{ date?: string; book?: string }> }) {
   const sp = await searchParams;
   const ds = await loadDataset();
   const dates = datesWithBets(ds);
@@ -26,7 +26,12 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const offset = dayDiff(date, today);
   const dateBadge = offset === 0 ? null : offset < 0 ? { tone: "paper", text: `No bets posted for today — showing ${fmtDate(date)}` } : { tone: "live", text: `Upcoming — ${fmtDate(date)}` };
 
-  const bets = betsForDate(ds, date);
+  const dayBets = betsForDate(ds, date);
+  // Book list is derived from THIS day's bets (not the whole dataset), so a book with
+  // nothing posted today never shows as a dead/empty filter option.
+  const availableBooks = [...new Set(dayBets.map((b) => b.book).filter((b): b is string => !!b))].sort();
+  const book = sp.book && availableBooks.includes(sp.book) ? sp.book : null;
+  const bets = book ? dayBets.filter((b) => b.book === book) : dayBets;
   const groups = groupBySport(bets);
 
   const idx = dates.indexOf(date);
@@ -58,6 +63,19 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           </div>
         ) : null}
       </div>
+
+      {/* Book filter — only shows when a day actually has picks split across more
+          than one book; a single-book day has nothing to filter. */}
+      {availableBooks.length > 1 ? (
+        <div className="filters" style={{ marginTop: 12 }}>
+          <div className="seg">
+            <Link href={`/?date=${date}`} className={cls(!book && "on")}>All books</Link>
+            {availableBooks.map((bk) => (
+              <Link key={bk} href={`/?date=${date}&book=${encodeURIComponent(bk)}`} className={cls(book === bk && "on")}>{bk}</Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {/* Day strip — pan across every day that has picks */}
       {strip.length > 1 ? (
