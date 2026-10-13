@@ -165,15 +165,42 @@ export function generateLineups(pool: Pool, settings: OptSettings): OptResult {
   const chosen: typeof scored = [];
   const expo = new Map<number, number>();
   const seen = new Set<string>();
-  for (const c of scored) {
-    if (chosen.length >= settings.nLineups) break;
-    if (c.players.some((p) => (expo.get(p) ?? 0) >= capCount)) continue;
-    const k = sortKey(c.players);
-    if (seen.has(k)) continue;
-    if (chosen.some((o) => { const set = new Set(o.players); return c.players.filter((p) => set.has(p)).length > maxOverlap; })) continue;
-    chosen.push(c);
-    seen.add(k);
-    for (const p of c.players) expo.set(p, (expo.get(p) ?? 0) + 1);
+  let curOverlap = maxOverlap;
+  let curCap = capCount;
+  const tryFill = (ov: number, cap: number): number => {
+    let added = 0;
+    for (const c of scored) {
+      if (chosen.length >= settings.nLineups) break;
+      if (c.players.some((p) => (expo.get(p) ?? 0) >= cap)) continue;
+      const k = sortKey(c.players);
+      if (seen.has(k)) continue;
+      if (chosen.some((o) => { const set = new Set(o.players); return c.players.filter((p) => set.has(p)).length > ov; })) continue;
+      chosen.push(c);
+      seen.add(k);
+      for (const p of c.players) expo.set(p, (expo.get(p) ?? 0) + 1);
+      added++;
+    }
+    return added;
+  };
+  tryFill(curOverlap, curCap);
+
+  // GUARANTEE the requested count. The single greedy pass above stops as soon as
+  // every remaining candidate is blocked, and then silently returns fewer lineups
+  // than asked for -- a real showdown asked for 20 and got 15 with no explanation.
+  //
+  // On a single-game slate the EXPOSURE cap is almost always what binds, not the
+  // overlap cap: gpp20 sets maxOverlap = n - 1 (5 of 6, i.e. barely a constraint)
+  // while capCount = ceil(0.5 * 20) = 10, so once the handful of genuinely good
+  // players each hit 10 appearances EVERY remaining candidate is blocked. Relaxing
+  // overlap alone therefore does nothing. Relax overlap first (cheap, preserves
+  // uniqueness), then step the exposure cap up until the set is full.
+  while (chosen.length < settings.nLineups && curOverlap < n - 1) {
+    curOverlap += 1;
+    if (tryFill(curOverlap, curCap) === 0) { curOverlap -= 1; break; }
+  }
+  while (chosen.length < settings.nLineups && curCap < settings.nLineups) {
+    curCap += 1;
+    tryFill(curOverlap, curCap);
   }
 
   const lineups: OptLineup[] = chosen.map((c) => {
