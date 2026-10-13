@@ -15,12 +15,14 @@ import {
   safeParseEloFile,
   safeParsePoolFile,
   safeParseBoardFile,
+  safeParsePropsFile,
   type PicksFile,
   type ResultsFile,
   type ValuesFile,
   type EloFile,
   type PoolFile,
   type BoardFile,
+  type PropsFile,
 } from "@bet/contract";
 import { loadEnv } from "@bet/db/env";
 
@@ -55,6 +57,7 @@ async function main() {
   const elos: EloFile[] = [];
   const pools: PoolFile[] = [];
   const boards: BoardFile[] = [];
+  const props: PropsFile[] = [];
   const problems: string[] = [];
 
   for (const file of files) {
@@ -91,8 +94,12 @@ async function main() {
       const r = safeParseBoardFile(json);
       if (r.ok && r.data) boards.push(r.data);
       else problems.push(`${rel}: ${(r.errors ?? []).join("; ")}`);
+    } else if (kind === "props") {
+      const r = safeParsePropsFile(json);
+      if (r.ok && r.data) props.push(r.data);
+      else problems.push(`${rel}: ${(r.errors ?? []).join("; ")}`);
     } else {
-      problems.push(`${rel}: unrecognized file (no 'bets', 'results', 'values', 'ratings', 'draws', or 'games' key)`);
+      problems.push(`${rel}: unrecognized file (no 'bets', 'results', 'values', 'ratings', 'draws', 'props', or 'games' key)`);
     }
   }
 
@@ -101,7 +108,8 @@ async function main() {
   const valuePlayCount = values.reduce((n, v) => n + v.values.length, 0);
   const eloPlayerCount = elos.reduce((n, e) => n + e.ratings.length, 0);
   const boardGameCount = boards.reduce((n, b) => n + b.games.length, 0);
-  console.log(`\nValidated: ${picks.length} picks files (${betCount} bets), ${results.length} results files (${gradeCount} grades), ${values.length} values files (${valuePlayCount} plays), ${elos.length} elo files (${eloPlayerCount} players), ${pools.length} pool files, ${boards.length} board files (${boardGameCount} games)`);
+  const propPlayerCount = props.reduce((n, p) => n + p.props.length, 0);
+  console.log(`\nValidated: ${picks.length} picks files (${betCount} bets), ${results.length} results files (${gradeCount} grades), ${values.length} values files (${valuePlayCount} plays), ${elos.length} elo files (${eloPlayerCount} players), ${pools.length} pool files, ${boards.length} board files (${boardGameCount} games), ${props.length} prop files (${propPlayerCount} players)`);
   if (problems.length) {
     console.log(`\nRejected ${problems.length} file(s):`);
     for (const p of problems) console.log(`  ✗ ${p}`);
@@ -112,7 +120,7 @@ async function main() {
     return;
   }
 
-  const { upsertPicksFile, upsertResultsFile, upsertValuesFile, upsertEloFile, upsertPoolFile, upsertBoardFile, openDb } = await import("@bet/db");
+  const { upsertPicksFile, upsertResultsFile, upsertValuesFile, upsertEloFile, upsertPoolFile, upsertBoardFile, upsertPropsFile, openDb } = await import("@bet/db");
   const handle = openDb(process.env.DATABASE_URL!);
   const reconcile = process.argv.includes("--reconcile");
   if (reconcile) console.log("reconcile ON: withdrawn (ungraded, no longer in file) bets will be removed.");
@@ -125,6 +133,7 @@ async function main() {
   for (const e of elos) await upsertEloFile(handle.db, e);
   for (const p of pools) await upsertPoolFile(handle.db, p);
   for (const b of boards) await upsertBoardFile(handle.db, b);
+  for (const p of props) await upsertPropsFile(handle.db, p);
 
   // DFS ENGINE's self-contained interactive simulator: upload the ~3.4MB HTML blob
   // only when it changed (by meta.json `updated`, else the file's mtime), so we don't
@@ -153,7 +162,7 @@ async function main() {
   }
 
   await handle.close();
-  console.log(`\nUpserted ${picks.length} picks files, ${results.length} results files, ${values.length} values files, ${elos.length} elo files, ${pools.length} pool files, ${boards.length} board files.`);
+  console.log(`\nUpserted ${picks.length} picks files, ${results.length} results files, ${values.length} values files, ${elos.length} elo files, ${pools.length} pool files, ${boards.length} board files, ${props.length} prop files.`);
 }
 
 main().catch((e) => {

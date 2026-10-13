@@ -8,6 +8,7 @@ import { cls } from "@/lib/format";
 const TABS = [
   { href: "/", label: "Today" },
   { href: "/dfs", label: "DFS" },
+  { href: "/touchdowns", label: "Touchdowns" },
   { href: "/tracker", label: "Tracker" },
   { href: "/extras", label: "Extras" },
   { href: "/sources", label: "Sources" },

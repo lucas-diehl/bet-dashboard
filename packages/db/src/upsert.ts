@@ -1,8 +1,8 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { isLatePgaOutright, type PicksFile, type ResultsFile, type ValuesFile, type EloFile, type PoolFile, type BoardFile } from "@bet/contract";
-import { assets, bets, dfsPools, dfsValues, eloRatings, modelBoards, results, slates } from "./schema";
+import { isLatePgaOutright, type PicksFile, type ResultsFile, type ValuesFile, type EloFile, type PoolFile, type BoardFile, type PropsFile } from "@bet/contract";
+import { assets, bets, dfsPools, dfsValues, eloRatings, modelBoards, propBoards, results, slates } from "./schema";
 
 export function openDb(url: string) {
   const isLocal = /localhost|127\.0\.0\.1/.test(url);
@@ -261,6 +261,35 @@ export async function upsertBoardFile(db: Db, b: BoardFile) {
     eventContext: b.event_context ?? null,
     notes: b.notes ?? null,
     payload: JSON.stringify(b),
+    updatedAt: new Date(),
+  });
+}
+
+/** Replace a player-level prop board: delete the existing row for
+ *  source+sport+market+slate_date, then insert the whole PropsFile as a JSON
+ *  blob (display-only, Touchdowns tab). Keyed on `market` as well as the board
+ *  triple so a future prop market does not overwrite anytime-TD. */
+export async function upsertPropsFile(db: Db, p: PropsFile) {
+  await db
+    .delete(propBoards)
+    .where(
+      and(
+        eq(propBoards.source, p.source),
+        eq(propBoards.sport, p.sport),
+        eq(propBoards.market, p.market),
+        eq(propBoards.slateDate, p.slate_date),
+      ),
+    );
+  await db.insert(propBoards).values({
+    source: p.source,
+    sport: p.sport,
+    market: p.market,
+    slateDate: p.slate_date,
+    generatedAt: p.generated_at ? new Date(p.generated_at) : null,
+    mode: p.mode ?? null,
+    eventContext: p.event_context ?? null,
+    notes: p.notes ?? null,
+    payload: JSON.stringify(p),
     updatedAt: new Date(),
   });
 }

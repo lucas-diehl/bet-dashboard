@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { classifyFeedFile, safeParsePicksFile, safeParseResultsFile, safeParseValuesFile, safeParseEloFile, safeParseBoardFile, type Grade, type PicksFile, type ValuesFile, type EloFile, type BoardFile } from "@bet/contract";
+import { classifyFeedFile, safeParsePicksFile, safeParseResultsFile, safeParseValuesFile, safeParseEloFile, safeParseBoardFile, safeParsePropsFile, type Grade, type PicksFile, type ValuesFile, type EloFile, type BoardFile, type PropsFile } from "@bet/contract";
 import type { ResultValue } from "@bet/core";
 import type { BetRow, Dataset, Mode, SlateRow } from "./types";
 
@@ -160,6 +160,23 @@ export function loadBoardFromFeed(dir: string): BoardFile[] {
     }
     if (classifyFeedFile(json) !== "board") continue;
     const r = safeParseBoardFile(json);
+    if (r.ok && r.data) out.push(r.data);
+  }
+  return out;
+}
+
+export function loadPropsFromFeed(dir: string): PropsFile[] {
+  const out: PropsFile[] = [];
+  for (const file of walk(dir)) {
+    if (!file.endsWith(".json")) continue;
+    let json: unknown;
+    try {
+      json = JSON.parse(readFileSync(file, "utf8"));
+    } catch {
+      continue;
+    }
+    if (classifyFeedFile(json) !== "props") continue;
+    const r = safeParsePropsFile(json);
     if (r.ok && r.data) out.push(r.data);
   }
   return out;

@@ -183,6 +183,28 @@ export const modelBoards = pgTable(
   (t) => ({ uniq: uniqueIndex("model_boards_natural_key").on(t.source, t.sport, t.slateDate) }),
 );
 
+// Player-level prop board — display-only (Touchdowns tab). Same blob pattern as
+// model_boards, but one row per PLAYER inside the payload rather than per game,
+// and keyed additionally by `market` so several prop markets (anytime TD, first
+// TD, receptions…) can coexist for the same slate day without overwriting.
+export const propBoards = pgTable(
+  "prop_boards",
+  {
+    id: serial("id").primaryKey(),
+    source: text("source").notNull(),
+    sport: text("sport").notNull(),
+    market: text("market").notNull(),
+    slateDate: date("slate_date").notNull(),
+    generatedAt: timestamp("generated_at", { withTimezone: true }),
+    mode: text("mode"),
+    eventContext: text("event_context"),
+    notes: text("notes"),
+    payload: text("payload").notNull(), // the full PropsFile JSON
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ uniq: uniqueIndex("prop_boards_natural_key").on(t.source, t.sport, t.market, t.slateDate) }),
+);
+
 export type SlateInsert = typeof slates.$inferInsert;
 export type BetInsert = typeof bets.$inferInsert;
 export type ResultInsert = typeof results.$inferInsert;

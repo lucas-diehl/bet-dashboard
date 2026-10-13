@@ -119,6 +119,12 @@ export const BetSchema = z
       .optional()
       .describe("Optional model tier / rank if you bucket plays."),
     tags: z.array(z.string()).optional().describe("Free-form tags for filtering, e.g. ['longshot','1H']."),
+    // When the bet FIRST entered the ledger, not when this file was written.
+    // The two differ: the feed is regenerated on every run, so `generated_at`
+    // on the file says nothing about how old a price is. A prop taken three
+    // days before kickoff and one grabbed on Sunday morning are different bets
+    // and should not look identical on the page.
+    posted_at: timestamp.optional().describe("When this bet was first published (frozen; not the file's generated_at)."),
     details: z
       .record(z.unknown())
       .optional()
@@ -391,3 +397,72 @@ export const BoardFileSchema = z
   .describe("A model board (every game + the model's numbers) for one sport's slate day (display-only, Extras tab).");
 
 export type BoardFile = z.infer<typeof BoardFileSchema>;
+
+// ---------------------------------------------------------------------------
+// props_<date>.json — a PLAYER-level prop board: one entry per priced player,
+// grouped by game. A SEVENTH feed file type, distinguished by its top-level
+// `props` array. One file per (source, sport, slate day); each emit REPLACES
+// the prior board for that key. Read by the /touchdowns page.
+//
+// Distinct from `values` (a short curated DFS list) and from `board` (one entry
+// per GAME). This is the full priced field: every player the book quotes, with
+// the best available number, what the model thinks, and the resulting edge/EV —
+// so a play that did not clear the betting threshold is still visible with the
+// reason it fell short.
+// ---------------------------------------------------------------------------
+export const PropPlayerSchema = z
+  .object({
+    player: z.string().min(1),
+    player_id: z.string().optional().describe("Stable id (GSIS for NFL)."),
+    position: z.string().optional(),
+    team: z.string().optional(),
+    opponent: z.string().optional(),
+    game_id: z.string().optional().describe("Groups players into their game."),
+    event: z.string().optional().describe("Matchup label, e.g. 'CLE @ PIT'."),
+    event_start: timestamp.nullable().optional(),
+    // Market side
+    best_odds: z.number().nullable().optional().describe("Best available AMERICAN odds across permitted books."),
+    best_book: z.string().nullable().optional(),
+    market_prob: z.number().nullable().optional().describe("Implied probability of the best price (still carries vig)."),
+    consensus_prob: z.number().nullable().optional().describe("Consensus implied probability across books."),
+    books: z.number().int().nullable().optional().describe("How many books quoted this player."),
+    // Model side
+    model_prob: z.number().nullable().optional().describe("Model probability the player scores."),
+    edge: z.number().nullable().optional().describe("model_prob - market_prob, in probability points."),
+    relative_edge: z.number().nullable().optional().describe("edge / market_prob."),
+    ev: z.number().nullable().optional().describe("Expected return per 1 unit staked at the best price."),
+    // Status
+    tier: z.string().nullable().optional().describe("CORE / EXPANDED / WATCHLIST / PASS."),
+    is_bet: z.boolean().optional().describe("True when this player was actually staked."),
+    stake: z.number().nullable().optional().describe("Units staked, when is_bet."),
+    // When the bet was locked in, which is NOT when this board was generated.
+    // The board is rebuilt twice a day against the live market; the bet keeps
+    // the price it was taken at. Showing both is the point: it tells you how
+    // stale a staked price is relative to what is quoted now.
+    posted_at: timestamp.nullable().optional().describe("When the bet was first published, if staked."),
+    posted_odds: z.number().nullable().optional().describe("The AMERICAN price actually taken, when it differs from the current best."),
+    excluded_reason: z.string().nullable().optional().describe("Why a positive-edge player was still not bet, e.g. 'QB excluded'."),
+    note: z.string().nullable().optional(),
+  })
+  .describe("One player on the prop board: best price, model probability, edge and EV.");
+
+export type PropPlayer = z.infer<typeof PropPlayerSchema>;
+
+export const PropsFileSchema = z
+  .object({
+    contract_version: z.string(),
+    source: z.string().min(1),
+    sport: z.string().min(1),
+    market: z.string().min(1).describe("Prop market key, e.g. 'anytime_td'."),
+    market_label: z.string().optional().describe("Display label, e.g. 'Anytime Touchdown'."),
+    slate_date: isoDate,
+    generated_at: timestamp,
+    model_version: z.string().optional(),
+    mode: ModeSchema.optional(),
+    event_context: z.string().optional().describe("Slate label, e.g. 'Week 4'."),
+    notes: z.string().optional(),
+    props: z.array(PropPlayerSchema).describe("Every priced player on the slate. Replaces the prior board for this (source, sport, slate_date)."),
+  })
+  .describe("A player-level prop board for one sport's slate day (display-only, Touchdowns tab).");
+
+export type PropsFile = z.infer<typeof PropsFileSchema>;

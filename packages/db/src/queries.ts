@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { rollup, rollupBy, type GradedRow, type Rollup } from "@bet/core";
 import type { Db } from "./upsert";
-import { assets, bets, dfsPools, dfsValues, eloRatings, modelBoards, results, slates } from "./schema";
+import { assets, bets, dfsPools, dfsValues, eloRatings, modelBoards, propBoards, results, slates } from "./schema";
 
 export interface PoolMeta {
   id: number;
@@ -46,7 +46,7 @@ export async function loadAsset(db: Db, key: string): Promise<{ content: string;
 }
 import type { BetRow, Dataset, Mode, SlateRow } from "./types";
 import type { ResultValue } from "@bet/core";
-import type { ValuesFile, EloFile, BoardFile } from "@bet/contract";
+import type { ValuesFile, EloFile, BoardFile, PropsFile } from "@bet/contract";
 
 /** Read the full dataset from Postgres, joining bets to their grades. Used by the
  *  web app when DATA_SOURCE=supabase. */
@@ -171,6 +171,22 @@ export async function loadBoardFromDb(db: Db): Promise<BoardFile[]> {
   for (const r of rows) {
     try {
       out.push(JSON.parse(r.payload) as BoardFile);
+    } catch {
+      /* skip corrupt payloads */
+    }
+  }
+  return out;
+}
+
+/** Read player-level prop boards from Postgres (one blob per
+ *  source+sport+market+slate_date). Used by /touchdowns when
+ *  DATA_SOURCE=supabase. Each row's payload IS a full PropsFile. */
+export async function loadPropsFromDb(db: Db): Promise<PropsFile[]> {
+  const rows = await db.select({ payload: propBoards.payload }).from(propBoards);
+  const out: PropsFile[] = [];
+  for (const r of rows) {
+    try {
+      out.push(JSON.parse(r.payload) as PropsFile);
     } catch {
       /* skip corrupt payloads */
     }
