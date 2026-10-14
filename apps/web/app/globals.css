@@ -113,6 +113,8 @@ h1, h2, h3 { margin: 0; font-weight: 650; letter-spacing: -0.01em; }
   color: var(--text-2); border: 1px solid transparent; white-space: nowrap;
 }
 .tab.active { background: var(--surface); color: var(--text); border-color: var(--border); }
+.tab-external { display: inline-flex; align-items: center; opacity: 0.8; }
+.tab-external:hover { opacity: 1; }
 
 .iconbtn {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;

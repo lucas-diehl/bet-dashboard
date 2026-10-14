@@ -14,6 +14,11 @@ const TABS = [
   { href: "/sources", label: "Sources" },
 ];
 
+// External sites get their own nav entry (opens in a new tab) rather than an
+// internal route — CBB picks will still post here as usual once that's live;
+// this just links out to the standalone CBB site in the meantime.
+const EXTERNAL_LINKS = [{ href: "https://web-luke-9d6d.vercel.app/", label: "CBB" }];
+
 export function TopBar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -64,6 +69,12 @@ export function TopBar() {
               </Link>
             );
           })}
+          {EXTERNAL_LINKS.map((t) => (
+            <a key={t.href} href={t.href} target="_blank" rel="noopener noreferrer" className="tab tab-external">
+              {t.label}
+              <ExternalIcon />
+            </a>
+          ))}
         </nav>
       </div>
     </header>
@@ -98,6 +109,15 @@ function ThemeToggle() {
         </svg>
       )}
     </button>
+  );
+}
+
+function ExternalIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 4, verticalAlign: -1 }}>
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <path d="M15 3h6v6M10 14 21 3" />
+    </svg>
   );
 }
 
