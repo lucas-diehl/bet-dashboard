@@ -1,18 +1,24 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { generateLineups, type Pool, type OptResult, type ContestType } from "@/lib/optimizer";
+import { generateLineups, CONTESTS, type Pool, type OptResult, type ContestType } from "@/lib/optimizer";
 import { cls } from "@/lib/format";
 
 // Interactive DFS lineup optimizer over the DFS-ENGINE pool. A fresh random seed each
 // build varies the lineups so no two runs/users match. No P&L / ROI / $ is surfaced —
 // this is a build tool, not a tracker. SaberSim/Stokastic-style contest presets pick the
 // objective (floor vs balanced vs ceiling), lineup count, and exposure for you.
-const PRESETS: Record<ContestType, { label: string; sub: string; n: number; expo: number }> = {
-  cash: { label: "Cash", sub: "Double-ups · highest floor", n: 5, expo: 1.0 },
-  single: { label: "Single GPP", sub: "One-entry tourney · balanced", n: 1, expo: 1.0 },
-  gpp20: { label: "20-Max GPP", sub: "20 diversified lineups", n: 20, expo: 0.5 },
-  large: { label: "Large GPP", sub: "Mass-entry · ceiling + leverage", n: 60, expo: 0.3 },
+// n/expo come from lib/optimizer's CONTESTS (the single source of truth, also what
+// generateLineups() checks a request against to see if a real precomputed set
+// applies) -- only the display label/sub text lives here.
+const PRESET_TEXT: Record<ContestType, { label: string; sub: string }> = {
+  cash: { label: "Cash", sub: "Double-ups · highest floor" },
+  single: { label: "Single GPP", sub: "One-entry tourney · balanced" },
+  gpp20: { label: "20-Max GPP", sub: "20 diversified lineups" },
+  large: { label: "Large GPP", sub: "Mass-entry · ceiling + leverage" },
 };
+const PRESETS: Record<ContestType, { label: string; sub: string; n: number; expo: number }> = Object.fromEntries(
+  (Object.keys(PRESET_TEXT) as ContestType[]).map((c) => [c, { ...PRESET_TEXT[c], n: CONTESTS[c].n, expo: CONTESTS[c].expo }]),
+) as Record<ContestType, { label: string; sub: string; n: number; expo: number }>;
 const ORDER: ContestType[] = ["cash", "single", "gpp20", "large"];
 
 export function Optimizer({ pool }: { pool: Pool }) {

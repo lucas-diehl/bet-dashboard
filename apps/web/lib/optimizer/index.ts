@@ -56,6 +56,13 @@ export interface Pool {
   opt_k?: number;
   cand_metrics?: (CandMetric | null)[] | null;
   contests?: unknown[];
+  // 50 precomputed, GUARANTEED exposure-respecting alternate sets per standard
+  // contest-type preset (spine/R/dashboard.R's .preset_sets()) -- built server-side by
+  // the SAME build_gpp20()/build_portfolio() that generate the real daily recommended
+  // lineups, not approximated client-side. Used directly for the default (no locks/
+  // excludes, default n/exposure) case; generateLineups() falls back to its own live
+  // approximation from `cands` otherwise (custom n/exposure, or any lock/exclude).
+  preset_sets?: Record<ContestType, { idx: number[]; win: number }[][]>;
 }
 
 export type ContestType = "cash" | "single" | "gpp20" | "large";
@@ -67,11 +74,15 @@ export type ContestType = "cash" | "single" | "gpp20" | "large";
 //   single -> one-entry tournament: one balanced +ROI lineup
 //   gpp20  -> 20-max tournament: diversified tournament-ROI set
 //   large  -> mass multi-entry: rank by ceiling (P[1st]) with max uniqueness + leverage
-export const CONTESTS: Record<ContestType, { metric: keyof CandMetric; jitter: number; overlap: number }> = {
-  cash: { metric: "cash", jitter: 0.1, overlap: 0 },
-  single: { metric: "gppRoi", jitter: 0.2, overlap: 0 },
-  gpp20: { metric: "gppRoi", jitter: 0.3, overlap: 1 },
-  large: { metric: "top1", jitter: 0.45, overlap: 2 },
+// n/expo are each type's DEFAULT lineup count + exposure cap -- also what
+// spine/R/dashboard.R's .preset_sets() built its 50 precomputed alternates with, so a
+// request matching these exactly (and no locks/excludes) is eligible to use a real
+// precomputed set instead of the live approximation below.
+export const CONTESTS: Record<ContestType, { metric: keyof CandMetric; jitter: number; overlap: number; n: number; expo: number }> = {
+  cash: { metric: "cash", jitter: 0.1, overlap: 0, n: 5, expo: 1.0 },
+  single: { metric: "gppRoi", jitter: 0.2, overlap: 0, n: 1, expo: 1.0 },
+  gpp20: { metric: "gppRoi", jitter: 0.3, overlap: 1, n: 20, expo: 0.5 },
+  large: { metric: "top1", jitter: 0.45, overlap: 2, n: 60, expo: 0.3 },
 };
 
 export interface OptSettings {
@@ -133,11 +144,46 @@ function lineupCeiling(pool: Pool, idx: number[]): number {
 const num = (x: unknown): number | undefined => (typeof x === "number" && isFinite(x) ? x : undefined);
 const sortKey = (a: number[]) => a.slice().sort((x, y) => x - y).join("-");
 
+// Default (no locks/excludes, default n/exposure for this contest type) -> use a
+// REAL precomputed set instead of approximating. Picks a uniformly random one of the
+// (up to) 50 alternates with the given seed, so "Build" still reseeds/varies like
+// before, just among genuinely guaranteed-correct options instead of a live retry.
+function fromPresetSet(pool: Pool, settings: OptSettings, sets: { idx: number[]; win: number }[][]): OptResult {
+  const rng = mulberry32(settings.seed ?? ((Math.random() * 2 ** 32) >>> 0));
+  const set = sets[Math.min(sets.length - 1, Math.floor(rng() * sets.length))] ?? [];
+  const lineups: OptLineup[] = set.map((l) => {
+    const salary = l.idx.reduce((s, p) => s + (pool.players[p]?.salary ?? 0), 0);
+    const proj = l.idx.reduce((s, p) => s + (pool.players[p]?.proj ?? 0), 0);
+    const own = l.idx.reduce((s, p) => s + (pool.players[p]?.own ?? 0), 0) / Math.max(1, l.idx.length);
+    return {
+      players: l.idx,
+      salary,
+      proj: Math.round(proj * 10) / 10,
+      ceiling: Math.round(lineupCeiling(pool, l.idx) * 10) / 10,
+      win: Math.round(l.win * 100 * 100) / 100,
+      own,
+    };
+  });
+  const expo = new Map<number, number>();
+  for (const l of lineups) for (const p of l.players) expo.set(p, (expo.get(p) ?? 0) + 1);
+  const exposure = [...expo.entries()]
+    .map(([idx, count]) => ({ idx, count, pct: count / Math.max(1, settings.nLineups) }))
+    .sort((a, b) => b.count - a.count);
+  return { lineups, exposure, eligible: lineups.length, requested: settings.nLineups };
+}
+
 export function generateLineups(pool: Pool, settings: OptSettings): OptResult {
+  const cfg = CONTESTS[settings.contest] ?? CONTESTS.gpp20;
+  const presetSets = pool.preset_sets?.[settings.contest];
+  const isDefaultRequest =
+    settings.nLineups === cfg.n && settings.maxExposure === cfg.expo && settings.locks.length === 0 && settings.excludes.length === 0;
+  if (isDefaultRequest && presetSets && presetSets.length > 0) {
+    return fromPresetSet(pool, settings, presetSets);
+  }
+
   const seed = settings.seed ?? ((Math.random() * 2 ** 32) >>> 0);
   const rng = mulberry32(seed);
   const n = pool.roster.n ?? pool.cands[0]?.length ?? 6;
-  const cfg = CONTESTS[settings.contest] ?? CONTESTS.gpp20;
   const maxOverlap = settings.maxOverlap ?? Math.max(1, n - cfg.overlap);
   const capCount = Math.max(1, Math.ceil(settings.maxExposure * settings.nLineups));
   const jitter = settings.jitter ?? cfg.jitter;
