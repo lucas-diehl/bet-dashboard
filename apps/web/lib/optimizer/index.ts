@@ -98,6 +98,7 @@ export interface OptResult {
   lineups: OptLineup[];
   exposure: { idx: number; count: number; pct: number }[]; // per-player exposure in the set
   eligible: number; // candidates that survived locks/excludes
+  requested: number; // the nLineups the caller asked for — compare to lineups.length for a shortfall
 }
 
 export function parsePool(json: string): Pool {
@@ -184,23 +185,30 @@ export function generateLineups(pool: Pool, settings: OptSettings): OptResult {
   };
   tryFill(curOverlap, curCap);
 
-  // GUARANTEE the requested count. The single greedy pass above stops as soon as
-  // every remaining candidate is blocked, and then silently returns fewer lineups
-  // than asked for -- a real showdown asked for 20 and got 15 with no explanation.
+  // Try to reach the requested count by relaxing OVERLAP ONLY. The single greedy
+  // pass above stops as soon as every remaining candidate is blocked, which can
+  // leave the set short -- a real showdown asked for 20 and got 15 with no
+  // explanation. On a single-game slate the EXPOSURE cap is almost always what
+  // binds, not the overlap cap: gpp20 sets maxOverlap = n - 1 (5 of 6, i.e.
+  // barely a constraint) while capCount = ceil(0.5 * 20) = 10, so once the
+  // handful of genuinely good players each hit 10 appearances every remaining
+  // candidate is blocked.
   //
-  // On a single-game slate the EXPOSURE cap is almost always what binds, not the
-  // overlap cap: gpp20 sets maxOverlap = n - 1 (5 of 6, i.e. barely a constraint)
-  // while capCount = ceil(0.5 * 20) = 10, so once the handful of genuinely good
-  // players each hit 10 appearances EVERY remaining candidate is blocked. Relaxing
-  // overlap alone therefore does nothing. Relax overlap first (cheap, preserves
-  // uniqueness), then step the exposure cap up until the set is full.
+  // This USED to also step curCap up past the user's chosen maxExposure once
+  // overlap relaxation ran out, "guaranteeing" the count by breaking the
+  // exposure promise instead -- confirmed live: a 30% cap build quietly handed
+  // someone 60%+ with no indication why. The exposure cap is a real constraint
+  // the person set deliberately (how much of their bankroll rides on one
+  // player), not a soft target like the overlap cap -- never silently relax it.
+  // spine/R/portfolio.R's build_gpp20() states this exact principle server-side
+  // ("never relax the exposure caps... only the pairwise-overlap floor") and
+  // this was the one place the browser optimizer didn't follow it. If the set
+  // still comes up short at the user's real cap, return fewer lineups than
+  // requested -- lineups.length vs settings.nLineups tells the caller so it can
+  // say so, rather than fabricating exposure the person didn't ask for.
   while (chosen.length < settings.nLineups && curOverlap < n - 1) {
     curOverlap += 1;
     if (tryFill(curOverlap, curCap) === 0) { curOverlap -= 1; break; }
-  }
-  while (chosen.length < settings.nLineups && curCap < settings.nLineups) {
-    curCap += 1;
-    tryFill(curOverlap, curCap);
   }
 
   const lineups: OptLineup[] = chosen.map((c) => {
@@ -222,5 +230,5 @@ export function generateLineups(pool: Pool, settings: OptSettings): OptResult {
     .map(([idx, count]) => ({ idx, count, pct: count / Math.max(1, chosen.length) }))
     .sort((a, b) => b.count - a.count);
 
-  return { lineups, exposure, eligible: eligible.length };
+  return { lineups, exposure, eligible: eligible.length, requested: settings.nLineups };
 }

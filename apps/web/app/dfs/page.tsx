@@ -23,7 +23,15 @@ const SITES = [
 ];
 const siteKey = (s?: string): string => ((s ?? "").toLowerCase().includes("fan") ? "fanduel" : "draftkings");
 
-export default async function DfsPage({ searchParams }: { searchParams: Promise<{ sport?: string; site?: string; slate?: string }> }) {
+const CONTEST_TYPES = ["cash", "single", "gpp20", "large"] as const;
+const CONTEST_TYPE_META: Record<string, { label: string; sub: string }> = {
+  cash: { label: "Cash", sub: "Double-ups / 50-50s" },
+  single: { label: "Single GPP", sub: "One-entry tourney" },
+  gpp20: { label: "20-Max GPP", sub: "2-20 entry cap" },
+  large: { label: "Large GPP", sub: "21+ entry cap (mass multi-entry)" },
+};
+
+export default async function DfsPage({ searchParams }: { searchParams: Promise<{ sport?: string; site?: string; slate?: string; ctype?: string }> }) {
   const sp = await searchParams;
   // The optimizer only ever shows the CURRENT slate — never past dates. Anything
   // older than today is filtered out entirely (tabs, site toggle, and selector).
@@ -90,17 +98,20 @@ export default async function DfsPage({ searchParams }: { searchParams: Promise<
   // just grouped 2-per-slot + FLEX. Only meaningful alongside the exposure view.
   const byPosition = showingExposure ? valuesFile?.by_position ?? null : null;
 
-  // Today's ranked GPPs for this sport (site-agnostic — DK's lobby covers both
-  // sites' contests together, and the structural score doesn't depend on site).
+  // Today's ranked contests for this sport (site-agnostic — DK's lobby covers both
+  // sites' contests together, and the structural score doesn't depend on site), split
+  // by contest type so picking a type shows the top 5 FOR THAT TYPE, same presets as
+  // the browser optimizer (cash / single / 20-max GPP / large mass-multi-entry).
   const contestsFile = allContests
     .filter((c) => c.sport === sport)
     .sort((a, b) => (a.generated_at < b.generated_at ? 1 : -1))[0];
-  const topContests = contestsFile?.contests ?? [];
+  const ctype = sp.ctype && (CONTEST_TYPES as readonly string[]).includes(sp.ctype) ? sp.ctype : "gpp20";
+  const topContests = contestsFile?.contests?.[ctype] ?? [];
 
   const meta = SPORT_META[sport] ?? { label: sport.toUpperCase(), cls: "" };
   const siteLabel = SITES.find((x) => x.k === site)?.label ?? site;
-  const href = (o: { sport?: string; site?: string; slate?: string | number }) =>
-    `/dfs?sport=${o.sport ?? sport}&site=${o.site ?? site}${o.slate != null ? `&slate=${o.slate}` : ""}`;
+  const href = (o: { sport?: string; site?: string; slate?: string | number; ctype?: string }) =>
+    `/dfs?sport=${o.sport ?? sport}&site=${o.site ?? site}${o.slate != null ? `&slate=${o.slate}` : ""}&ctype=${o.ctype ?? ctype}`;
   // Layout picker text: prefer the DFS engine's human label (e.g. "Full Slate (16
   // games)", "Showdown (NE @ SEA)", "Alt Slate (12 games, Sun Sep 13)") — falls back
   // to the old event/round/date combo for slates published before slate_label existed.
@@ -152,17 +163,31 @@ export default async function DfsPage({ searchParams }: { searchParams: Promise<
         </>
       )}
 
-      {topContests.length > 0 ? (
+      {contestsFile ? (
         <>
           <div className="section-head" style={{ marginTop: 16 }}>
             <span className="chip" />
             <h2>{meta.label} — Best Contests to Enter</h2>
           </div>
           <div className="updated" style={{ marginTop: -6 }}>
-            Ranked by contest structure (rake, entry-cap softness, field size, overlay) — where to enter, not who to roster
+            Pick your contest type, see its top 5 — ranked by structure (rake, entry-cap softness, field size, overlay), not who to roster
             {contestsFile?.slate_date ? ` · ${contestsFile.slate_date}` : ""}
           </div>
-          <div className="card" style={{ padding: "4px 12px" }}>
+          <div className="filters" style={{ marginTop: 8 }}>
+            <div className="seg">
+              {CONTEST_TYPES.map((t) => (
+                <Link key={t} href={href({ ctype: t })} className={cls(ctype === t && "on")} title={CONTEST_TYPE_META[t].sub}>
+                  {CONTEST_TYPE_META[t].label}
+                </Link>
+              ))}
+            </div>
+          </div>
+          {topContests.length === 0 ? (
+            <div className="empty" style={{ marginTop: 8 }}>
+              No live {CONTEST_TYPE_META[ctype].label} contests in range for {meta.label} right now — try another contest type.
+            </div>
+          ) : (
+          <div className="card" style={{ padding: "4px 12px", marginTop: 8 }}>
             <div className="chart-scroll">
               <table className="grid-table">
                 <thead>
@@ -194,6 +219,7 @@ export default async function DfsPage({ searchParams }: { searchParams: Promise<
               </table>
             </div>
           </div>
+          )}
         </>
       ) : null}
 

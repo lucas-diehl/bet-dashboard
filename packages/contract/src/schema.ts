@@ -282,9 +282,13 @@ export const ContestsFileSchema = z
     sport: z.string().min(1).describe("DFS sport key: golf | wnba | tennis | nfl | ncaaf."),
     slate_date: isoDate,
     generated_at: timestamp,
-    contests: z.array(ContestItemSchema).describe("Today's live GPPs for this sport, ranked best-structure first. May be empty."),
+    contests: z
+      .record(z.string(), z.array(ContestItemSchema))
+      .describe(
+        "Top ~5 live contests per CONTEST TYPE for this sport, keyed by type ('cash' | 'single' | 'gpp20' | 'large', matching the browser optimizer's own contest presets), each ranked best-structure first. A type can be absent or empty when nothing in range qualifies today.",
+      ),
   })
-  .describe("Today's live DK GPPs for one sport, ranked by structural +EV (display-only) — where to enter, not who to roster.");
+  .describe("Today's live DK contests for one sport, split by contest type and ranked by structural +EV (display-only) — where to enter, not who to roster.");
 
 export type ContestsFile = z.infer<typeof ContestsFileSchema>;
 

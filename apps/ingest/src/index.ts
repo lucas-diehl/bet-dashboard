@@ -113,7 +113,7 @@ async function main() {
   const betCount = picks.reduce((n, p) => n + p.bets.length, 0);
   const gradeCount = results.reduce((n, r) => n + r.results.length, 0);
   const valuePlayCount = values.reduce((n, v) => n + v.values.length, 0);
-  const contestCount = contests.reduce((n, c) => n + c.contests.length, 0);
+  const contestCount = contests.reduce((n, c) => n + Object.values(c.contests).reduce((m, arr) => m + arr.length, 0), 0);
   const eloPlayerCount = elos.reduce((n, e) => n + e.ratings.length, 0);
   const boardGameCount = boards.reduce((n, b) => n + b.games.length, 0);
   const propPlayerCount = props.reduce((n, p) => n + p.props.length, 0);

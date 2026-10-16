@@ -112,6 +112,11 @@ export function Optimizer({ pool }: { pool: Pool }) {
       {result && (
         <>
           <div className="subhead" style={{ marginTop: 16 }}>{result.lineups.length} {PRESETS[contest].label} lineup{result.lineups.length === 1 ? "" : "s"}</div>
+          {result.lineups.length < result.requested ? (
+            <div className="updated" style={{ marginTop: -6 }}>
+              Asked for {result.requested}, built {result.lineups.length} — your {Math.round(maxExposure * 100)}% exposure cap is holding firm, and this slate&apos;s candidate pool runs out of cap-legal combinations before reaching {result.requested}. Raise max exposure, lower the lineup count, or widen locks/excludes for more.
+            </div>
+          ) : null}
           {result.lineups.length === 0 ? (
             <div className="empty">No lineups fit those constraints — loosen locks/excludes or raise max exposure.</div>
           ) : (
