@@ -238,10 +238,55 @@ export const ValuesFileSchema = z
     event: z.string().optional().describe("Event/tournament name, e.g. 'BMW Championship' (single_round slates)."),
     generated_at: timestamp,
     values: z.array(ValueItemSchema).describe("Up to ~10 value plays, already sorted best value first. May be empty."),
+    by_position: z
+      .record(z.string(), z.array(ValueItemSchema))
+      .optional()
+      .describe(
+        "Team sports only (nfl/wnba/ncaaf): top ~2 optimizer plays per roster position (plus a 'FLEX' group), keyed by position label. Same exposure-view items as `values`, just grouped. Absent for golf/tennis (no positions) or when the exposure view isn't showing.",
+      ),
   })
   .describe("A day's top DFS value plays for one sport (display-only). slate_type='single_round' is a distinct round slate.");
 
 export type ValuesFile = z.infer<typeof ValuesFileSchema>;
+
+// ---------------------------------------------------------------------------
+// contests_<date>.json — today's live DK GPPs for one sport, ranked by
+// structural +EV (display-only). A new feed file type (2026-10-16), distinguished
+// by its top-level `contests` array. WHERE to enter, never WHO to roster — pure
+// contest structure (rake / entry-cap softness / field size / overlay), no
+// projection involved. One file per (source, sport, slate day).
+// ---------------------------------------------------------------------------
+export const ContestItemSchema = z
+  .object({
+    rank: z.number().int().optional().describe("1-based rank by structural score; the page falls back to row order if omitted."),
+    name: z.string().min(1).describe("DK contest name (required)."),
+    entry_fee: z.number().describe("Entry fee in dollars (required)."),
+    field_size: z.number().int().describe("Total entrants the contest holds (required)."),
+    max_entries: z.number().int().optional().describe("Per-user entry cap. 1-3 = single/small-entry (soft field); 150 = mass multi-entry mega-GPP (shark-heaviest, highest effective rake)."),
+    guaranteed: z.boolean().optional().describe("Prize pool is guaranteed regardless of how many entries fill."),
+    rake_pct: z.number().min(0).max(1).optional().describe("Share of entry fees NOT returned as prizes. Prefer <14%; avoid >18%."),
+    fill_pct: z.number().min(0).max(1).optional().describe("entries / field_size right now. Low + guaranteed = overlay (free EV)."),
+    first_place_pct: z.number().min(0).max(1).optional().describe("Share of the total prize pool paid to 1st place, from the real payout table — informs how top-heavy/winner-take-all-ish the contest is."),
+    score: z.number().min(0).max(100).describe("Structural +EV score (required): rake 45%, entry-cap softness 30%, field size 10%, overlay signal 15%. Higher is better."),
+    verdict: z.string().optional().describe("Short human-readable why this contest ranked where it did."),
+    start: z.string().optional().describe("Contest start time as DK reports it (free-text, not a parsed timestamp)."),
+  })
+  .describe("One live DK contest, scored by structure (not projection).");
+
+export type ContestItem = z.infer<typeof ContestItemSchema>;
+
+export const ContestsFileSchema = z
+  .object({
+    contract_version: z.string(),
+    source: z.string().min(1).describe("Producing project key — 'dfs-engine'."),
+    sport: z.string().min(1).describe("DFS sport key: golf | wnba | tennis | nfl | ncaaf."),
+    slate_date: isoDate,
+    generated_at: timestamp,
+    contests: z.array(ContestItemSchema).describe("Today's live GPPs for this sport, ranked best-structure first. May be empty."),
+  })
+  .describe("Today's live DK GPPs for one sport, ranked by structural +EV (display-only) — where to enter, not who to roster.");
+
+export type ContestsFile = z.infer<typeof ContestsFileSchema>;
 
 // ---------------------------------------------------------------------------
 // elo_<date>.json — player Elo ratings (display-only), shown on the Extras tab.

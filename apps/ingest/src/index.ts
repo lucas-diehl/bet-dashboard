@@ -12,6 +12,7 @@ import {
   safeParsePicksFile,
   safeParseResultsFile,
   safeParseValuesFile,
+  safeParseContestsFile,
   safeParseEloFile,
   safeParsePoolFile,
   safeParseBoardFile,
@@ -19,6 +20,7 @@ import {
   type PicksFile,
   type ResultsFile,
   type ValuesFile,
+  type ContestsFile,
   type EloFile,
   type PoolFile,
   type BoardFile,
@@ -54,6 +56,7 @@ async function main() {
   const picks: PicksFile[] = [];
   const results: ResultsFile[] = [];
   const values: ValuesFile[] = [];
+  const contests: ContestsFile[] = [];
   const elos: EloFile[] = [];
   const pools: PoolFile[] = [];
   const boards: BoardFile[] = [];
@@ -82,6 +85,10 @@ async function main() {
       const r = safeParseValuesFile(json);
       if (r.ok && r.data) values.push(r.data);
       else problems.push(`${rel}: ${(r.errors ?? []).join("; ")}`);
+    } else if (kind === "contests") {
+      const r = safeParseContestsFile(json);
+      if (r.ok && r.data) contests.push(r.data);
+      else problems.push(`${rel}: ${(r.errors ?? []).join("; ")}`);
     } else if (kind === "elo") {
       const r = safeParseEloFile(json);
       if (r.ok && r.data) elos.push(r.data);
@@ -99,17 +106,18 @@ async function main() {
       if (r.ok && r.data) props.push(r.data);
       else problems.push(`${rel}: ${(r.errors ?? []).join("; ")}`);
     } else {
-      problems.push(`${rel}: unrecognized file (no 'bets', 'results', 'values', 'ratings', 'draws', 'props', or 'games' key)`);
+      problems.push(`${rel}: unrecognized file (no 'bets', 'results', 'values', 'contests', 'ratings', 'draws', 'props', or 'games' key)`);
     }
   }
 
   const betCount = picks.reduce((n, p) => n + p.bets.length, 0);
   const gradeCount = results.reduce((n, r) => n + r.results.length, 0);
   const valuePlayCount = values.reduce((n, v) => n + v.values.length, 0);
+  const contestCount = contests.reduce((n, c) => n + c.contests.length, 0);
   const eloPlayerCount = elos.reduce((n, e) => n + e.ratings.length, 0);
   const boardGameCount = boards.reduce((n, b) => n + b.games.length, 0);
   const propPlayerCount = props.reduce((n, p) => n + p.props.length, 0);
-  console.log(`\nValidated: ${picks.length} picks files (${betCount} bets), ${results.length} results files (${gradeCount} grades), ${values.length} values files (${valuePlayCount} plays), ${elos.length} elo files (${eloPlayerCount} players), ${pools.length} pool files, ${boards.length} board files (${boardGameCount} games), ${props.length} prop files (${propPlayerCount} players)`);
+  console.log(`\nValidated: ${picks.length} picks files (${betCount} bets), ${results.length} results files (${gradeCount} grades), ${values.length} values files (${valuePlayCount} plays), ${contests.length} contest files (${contestCount} contests), ${elos.length} elo files (${eloPlayerCount} players), ${pools.length} pool files, ${boards.length} board files (${boardGameCount} games), ${props.length} prop files (${propPlayerCount} players)`);
   if (problems.length) {
     console.log(`\nRejected ${problems.length} file(s):`);
     for (const p of problems) console.log(`  ✗ ${p}`);
@@ -120,7 +128,7 @@ async function main() {
     return;
   }
 
-  const { upsertPicksFile, upsertResultsFile, upsertValuesFile, upsertEloFile, upsertPoolFile, upsertBoardFile, upsertPropsFile, openDb } = await import("@bet/db");
+  const { upsertPicksFile, upsertResultsFile, upsertValuesFile, upsertContestsFile, upsertEloFile, upsertPoolFile, upsertBoardFile, upsertPropsFile, openDb } = await import("@bet/db");
   const handle = openDb(process.env.DATABASE_URL!);
   const reconcile = process.argv.includes("--reconcile");
   if (reconcile) console.log("reconcile ON: withdrawn (ungraded, no longer in file) bets will be removed.");
@@ -130,6 +138,7 @@ async function main() {
   // values_<date>_<site>.json collapse to the same (source,sport,site,date,label)
   // key, the newer file is upserted last and wins — independent of walk order.
   for (const v of [...values].sort((a, b) => (a.generated_at < b.generated_at ? -1 : 1))) await upsertValuesFile(handle.db, v);
+  for (const c of contests) await upsertContestsFile(handle.db, c);
   for (const e of elos) await upsertEloFile(handle.db, e);
   for (const p of pools) await upsertPoolFile(handle.db, p);
   for (const b of boards) await upsertBoardFile(handle.db, b);
@@ -162,7 +171,7 @@ async function main() {
   }
 
   await handle.close();
-  console.log(`\nUpserted ${picks.length} picks files, ${results.length} results files, ${values.length} values files, ${elos.length} elo files, ${pools.length} pool files, ${boards.length} board files, ${props.length} prop files.`);
+  console.log(`\nUpserted ${picks.length} picks files, ${results.length} results files, ${values.length} values files, ${contests.length} contest files, ${elos.length} elo files, ${pools.length} pool files, ${boards.length} board files, ${props.length} prop files.`);
 }
 
 main().catch((e) => {

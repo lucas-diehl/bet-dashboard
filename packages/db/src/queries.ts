@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { rollup, rollupBy, type GradedRow, type Rollup } from "@bet/core";
 import type { Db } from "./upsert";
-import { assets, bets, dfsPools, dfsValues, eloRatings, modelBoards, propBoards, results, slates } from "./schema";
+import { assets, bets, dfsContests, dfsPools, dfsValues, eloRatings, modelBoards, propBoards, results, slates } from "./schema";
 
 export interface PoolMeta {
   id: number;
@@ -46,7 +46,7 @@ export async function loadAsset(db: Db, key: string): Promise<{ content: string;
 }
 import type { BetRow, Dataset, Mode, SlateRow } from "./types";
 import type { ResultValue } from "@bet/core";
-import type { ValuesFile, EloFile, BoardFile, PropsFile } from "@bet/contract";
+import type { ValuesFile, ContestsFile, EloFile, BoardFile, PropsFile } from "@bet/contract";
 
 /** Read the full dataset from Postgres, joining bets to their grades. Used by the
  *  web app when DATA_SOURCE=supabase. */
@@ -136,6 +136,7 @@ export async function loadValuesFromDb(db: Db): Promise<ValuesFile[]> {
         event: r.event ?? undefined,
         generated_at: r.generatedAt ? r.generatedAt.toISOString() : "",
         values: [],
+        by_position: (r.byPosition as ValuesFile["by_position"]) ?? undefined,
       };
       byslate.set(key, f);
     }
@@ -161,6 +162,22 @@ export async function loadValuesFromDb(db: Db): Promise<ValuesFile[]> {
     });
   }
   return [...byslate.values()];
+}
+
+/** Read today's ranked contest boards from Postgres (one blob per source+sport+
+ *  slate_date). Used by /dfs when DATA_SOURCE=supabase. Each row's payload IS a
+ *  full ContestsFile. */
+export async function loadContestsFromDb(db: Db): Promise<ContestsFile[]> {
+  const rows = await db.select({ payload: dfsContests.payload }).from(dfsContests);
+  const out: ContestsFile[] = [];
+  for (const r of rows) {
+    try {
+      out.push(JSON.parse(r.payload) as ContestsFile);
+    } catch {
+      /* skip corrupt payloads */
+    }
+  }
+  return out;
 }
 
 /** Read model boards from Postgres (one blob per source+sport+slate_date). Used by

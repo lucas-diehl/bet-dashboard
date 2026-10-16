@@ -1,8 +1,8 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { isLatePgaOutright, type PicksFile, type ResultsFile, type ValuesFile, type EloFile, type PoolFile, type BoardFile, type PropsFile } from "@bet/contract";
-import { assets, bets, dfsPools, dfsValues, eloRatings, modelBoards, propBoards, results, slates } from "./schema";
+import { isLatePgaOutright, type PicksFile, type ResultsFile, type ValuesFile, type ContestsFile, type EloFile, type PoolFile, type BoardFile, type PropsFile } from "@bet/contract";
+import { assets, bets, dfsContests, dfsPools, dfsValues, eloRatings, modelBoards, propBoards, results, slates } from "./schema";
 
 export function openDb(url: string) {
   const isLocal = /localhost|127\.0\.0\.1/.test(url);
@@ -225,6 +225,7 @@ export async function upsertValuesFile(db: Db, v: ValuesFile) {
       ownership: it.ownership ?? null,
       exposure: it.exposure ?? null,
       note: it.note ?? null,
+      byPosition: v.by_position ?? null,
     })),
   );
 }
@@ -248,6 +249,21 @@ export async function upsertAsset(db: Db, key: string, content: string, updated:
  *  insert the new ratings list. */
 /** Replace a model board: delete the existing row for source+sport+slate_date, then
  *  insert the whole BoardFile as a JSON blob (display-only, Extras tab). */
+/** Replace today's ranked contest board for one sport: delete the existing row
+ *  for source+sport+slate_date, then insert the whole ContestsFile as a JSON
+ *  blob (display-only, /dfs page). Same wholesale-replace pattern as board/props. */
+export async function upsertContestsFile(db: Db, c: ContestsFile) {
+  await db.delete(dfsContests).where(and(eq(dfsContests.source, c.source), eq(dfsContests.sport, c.sport), eq(dfsContests.slateDate, c.slate_date)));
+  await db.insert(dfsContests).values({
+    source: c.source,
+    sport: c.sport,
+    slateDate: c.slate_date,
+    generatedAt: c.generated_at ? new Date(c.generated_at) : null,
+    payload: JSON.stringify(c),
+    updatedAt: new Date(),
+  });
+}
+
 export async function upsertBoardFile(db: Db, b: BoardFile) {
   await db
     .delete(modelBoards)

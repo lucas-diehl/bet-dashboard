@@ -110,8 +110,34 @@ export const dfsValues = pgTable(
     ownership: doublePrecision("ownership"),
     exposure: doublePrecision("exposure"),
     note: text("note"),
+    // Same by_position JSON (top-2-per-roster-slot + FLEX) duplicated onto every
+    // row of the slate, same denormalization already used for roundLabel/event
+    // above — cheap at this size, and avoids a second table for one slate-level
+    // blob. Added 2026-10-16: the backend had computed this since it shipped but
+    // it had nowhere to go (not in this table, not in the contract), so it was
+    // silently dropped at ingest. Null for golf/tennis (no positions).
+    byPosition: jsonb("by_position").$type<Record<string, unknown>>(),
   },
   (t) => ({ slateIdx: index("dfs_values_slate").on(t.source, t.sport, t.slateDate, t.slateLabel) }),
+);
+
+// Today's live DK GPPs for one sport, ranked by structural +EV (rake / entry-cap
+// softness / field size / overlay) — display-only, WHERE to enter not WHO to
+// roster. Blob pattern like model_boards/prop_boards: one row holds the whole
+// ContestsFile JSON, replaced wholesale on ingest. Added 2026-10-16: score_contests()
+// has computed this since 2026-10-14 but it only ever reached a local text report.
+export const dfsContests = pgTable(
+  "dfs_contests",
+  {
+    id: serial("id").primaryKey(),
+    source: text("source").notNull(),
+    sport: text("sport").notNull(),
+    slateDate: date("slate_date").notNull(),
+    generatedAt: timestamp("generated_at", { withTimezone: true }),
+    payload: text("payload").notNull(), // the full ContestsFile JSON
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ uniq: uniqueIndex("dfs_contests_natural_key").on(t.source, t.sport, t.slateDate) }),
 );
 
 // Player Elo ratings — display-only (Extras tab), one row per player. A snapshot is

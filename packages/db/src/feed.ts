@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { classifyFeedFile, safeParsePicksFile, safeParseResultsFile, safeParseValuesFile, safeParseEloFile, safeParseBoardFile, safeParsePropsFile, type Grade, type PicksFile, type ValuesFile, type EloFile, type BoardFile, type PropsFile } from "@bet/contract";
+import { classifyFeedFile, safeParsePicksFile, safeParseResultsFile, safeParseValuesFile, safeParseContestsFile, safeParseEloFile, safeParseBoardFile, safeParsePropsFile, type Grade, type PicksFile, type ValuesFile, type ContestsFile, type EloFile, type BoardFile, type PropsFile } from "@bet/contract";
 import type { ResultValue } from "@bet/core";
 import type { BetRow, Dataset, Mode, SlateRow } from "./types";
 
@@ -122,6 +122,25 @@ export function loadValuesFromFeed(dir: string): ValuesFile[] {
     }
     if (classifyFeedFile(json) !== "values") continue;
     const r = safeParseValuesFile(json);
+    if (r.ok && r.data) out.push(r.data);
+  }
+  return out;
+}
+
+/** Read all contests_*.json (ranked DK GPPs) from the feed folder. Independent of
+ *  picks/results and of DATA_SOURCE — the /dfs page always reads these live. */
+export function loadContestsFromFeed(dir: string): ContestsFile[] {
+  const out: ContestsFile[] = [];
+  for (const file of walk(dir)) {
+    if (!/contests_[^\\/]*\.json$/.test(file)) continue;
+    let json: unknown;
+    try {
+      json = JSON.parse(readFileSync(file, "utf8"));
+    } catch {
+      continue;
+    }
+    if (classifyFeedFile(json) !== "contests") continue;
+    const r = safeParseContestsFile(json);
     if (r.ok && r.data) out.push(r.data);
   }
   return out;
