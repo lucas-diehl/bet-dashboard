@@ -226,8 +226,20 @@ export function generateLineups(pool: Pool, settings: OptSettings): OptResult {
     };
   });
 
+  // pct is against the REQUESTED count (settings.nLineups), not chosen.length (how
+  // many actually got built) -- the cap itself (capCount, above) is computed off the
+  // request, so displaying it that same way is the only way the number on screen can
+  // ever match the % the person actually typed into the slider. Dividing by the
+  // achieved count instead (the old behavior) looked like a flagrant cap violation
+  // whenever the set came up short: confirmed live, a 25% cap that correctly capped
+  // everyone at 5 absolute lineups showed "63%" once the pool only managed to build 8
+  // of the requested 20 (5/8), because the shortfall is exactly when this denominator
+  // choice stops matching what's on the slider. The shortfall itself is still
+  // communicated separately (lineups.length vs requested, surfaced in Optimizer.tsx) --
+  // this number's only job is "what share of the N you asked for is this player in,"
+  // which is also the one a real cap promise has to be honest about.
   const exposure = [...expo.entries()]
-    .map(([idx, count]) => ({ idx, count, pct: count / Math.max(1, chosen.length) }))
+    .map(([idx, count]) => ({ idx, count, pct: count / Math.max(1, settings.nLineups) }))
     .sort((a, b) => b.count - a.count);
 
   return { lineups, exposure, eligible: eligible.length, requested: settings.nLineups };
