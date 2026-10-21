@@ -28,6 +28,7 @@ export function BetCard({ bet }: { bet: BetRow }) {
             {bet.selection}
             {opponent ? <span className="bet-line muted" style={{ fontWeight: 500 }}> vs {opponent}</span> : null}
             {!opponent && bet.line != null && (bet.market === "spread" || bet.market === "first_half_spread") ? <span className="bet-line"> {bet.line > 0 ? "+" : ""}{bet.line}</span> : null}
+            {!opponent && bet.line != null && bet.market === "prop" ? <span className="bet-line"> {bet.line}</span> : null}
           </div>
           {bet.event ? <div className="bet-event">{bet.event}{bet.event_start ? ` · ${fmtTime(bet.event_start, appTimeZone())}` : ""}</div> : null}
         </div>

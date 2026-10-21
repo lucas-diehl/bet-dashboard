@@ -191,6 +191,12 @@ export default async function ExtrasPage() {
         )}
       </div>
 
+      {/* NFL model board (ATS/O-U lean + grading) removed 2026-10-21 per owner
+          direction ("take out all NFL o/u and ATS picks... we don't use
+          those") - this project doesn't stake NFL spread/total any more
+          (see NFL/scripts/57_publish_weekly_picks.R), and the informational
+          lean that used to render here is gone along with it. */}
+
       {/* ---- Golf player Elo ---- */}
       <div className="section">
         <div className="section-head">

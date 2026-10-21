@@ -36,7 +36,14 @@ export async function loadDataset(): Promise<Dataset> {
   const rawBets = (start ? ds.bets.filter((b) => b.slate_date >= start) : ds.bets)
     // Drop PGA outrights that leaked in after the tournament started (first_seen >
     // slate_date) — never grade, log, or count them. Matchups are unaffected.
-    .filter((b) => !isLatePgaOutright({ sport: b.sport, market: b.market, tags: b.tags, details: b.details, slate_date: b.slate_date }));
+    .filter((b) => !isLatePgaOutright({ sport: b.sport, market: b.market, tags: b.tags, details: b.details, slate_date: b.slate_date }))
+    // User directive (2026-10-21): NFL spread/total ("ATS and O/U") picks are not
+    // used any more — hide them everywhere, including already-graded history, not
+    // just new ones. The model stopped generating new rows (NFL/scripts/57_publish_
+    // weekly_picks.R), but old rows stay in the DB; filtered here, on read, so
+    // nothing has to be deleted and every page (board, tracker, extras) is covered
+    // from one place, same pattern as the PGA-outright filter above.
+    .filter((b) => !(b.sport === "nfl" && (b.market === "spread" || b.market === "total")));
   const rawSlates = start ? ds.slates.filter((s) => s.slate_date >= start) : ds.slates;
   // User directive: treat EVERY play as LIVE — no paper mode anywhere, past or
   // future. Applied on read so it covers both the feed and Supabase paths without
