@@ -43,7 +43,13 @@ export async function loadDataset(): Promise<Dataset> {
     // weekly_picks.R), but old rows stay in the DB; filtered here, on read, so
     // nothing has to be deleted and every page (board, tracker, extras) is covered
     // from one place, same pattern as the PGA-outright filter above.
-    .filter((b) => !(b.sport === "nfl" && (b.market === "spread" || b.market === "total")));
+    .filter((b) => !(b.sport === "nfl" && (b.market === "spread" || b.market === "total")))
+    // User directive (2026-11-01): CFB totals ("we are not going to bet these anymore")
+    // off the board, same treatment — ATS (spread) is untouched and still live. The
+    // model stopped staking new ones (cfb-modeling/07_write_feed.R, EMIT_TOTAL defaults
+    // off) but old rows stay in the DB; filtered here so history disappears too, not
+    // just future picks.
+    .filter((b) => !(b.sport === "cfb" && b.market === "total"));
   const rawSlates = start ? ds.slates.filter((s) => s.slate_date >= start) : ds.slates;
   // User directive: treat EVERY play as LIVE — no paper mode anywhere, past or
   // future. Applied on read so it covers both the feed and Supabase paths without
