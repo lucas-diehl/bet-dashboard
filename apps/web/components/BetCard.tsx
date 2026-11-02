@@ -44,6 +44,7 @@ export function BetCard({ bet }: { bet: BetRow }) {
         {bet.book ? <span className={cls("pill book", bet.book === "FanDuel" && "bk-fanduel", bet.book === "DraftKings" && "bk-draftkings", bet.book === "bet365" && "bk-bet365")}>{bet.book}</span> : null}
         {bet.confidence ? <span className={cls("pill", `conf-${bet.confidence}`)}>{bet.confidence}</span> : null}
         {bet.tags?.includes("gpp") ? <span className="pill book">GPP</span> : null}
+        {bet.tags?.includes("experimental") ? <span className="pill experimental" title="Unconfirmed cohort — not yet statistically distinguishable from breakeven">EXPERIMENTAL</span> : null}
       </div>
 
       <div className="bet-meta">

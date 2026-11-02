@@ -160,6 +160,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; letter-spacing: -0.01em; }
 .pill.conf-high { background: color-mix(in srgb, var(--good) 14%, var(--surface)); color: var(--good); }
 .pill.conf-medium { background: var(--surface-2); color: var(--text-2); }
 .pill.conf-low { background: var(--surface-2); color: var(--muted); }
+.pill.experimental { background: color-mix(in srgb, var(--warn) 16%, var(--surface)); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
 
 .res { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 6px; font-size: 12px; font-weight: 800; }
 .res.win { background: color-mix(in srgb, var(--good) 18%, var(--surface)); color: var(--good); }
