@@ -109,21 +109,18 @@ export const MARKET_LABELS: Record<string, string> = {
   other: "Other",
 };
 
-// A full-tournament golf outright (win / top-5 / top-10 / top-20) — as opposed to a
-// round-by-round matchup, which is legitimately placed during the tournament.
-export function isGolfOutrightMarket(market: string, tags?: string[]): boolean {
-  if (tags?.includes("outright")) return true;
-  return /^outright/.test(market) || /^top[_]?\d/.test(market) || market === "win";
-}
-
-// A PGA outright that was NOT frozen before the tournament started. Outrights must be
-// locked in pre-tournament: the field is "frozen before the tournament starts" (first
-// tee on the slate/first-round date), so a legit one is first generated STRICTLY
-// BEFORE the slate date. `details.first_seen >= slate_date` marks anything first seen
-// on the start day or later (a mid-tournament leak, e.g. a top-10 priced once Round 1
-// is underway). These must not be graded, logged, or counted. Round-by-round matchups
-// are unaffected. Returns false when first_seen is unknown.
-export function isLatePgaOutright(args: {
+// A PGA pick (any market — outright OR round-by-round matchup) that was NOT selected
+// with enough lead time before the tournament. Owner-directed 2026-11-09: late-selected
+// picks ("golf-modeling/engine/bet_hub.R" now locks new picks at least 10h before the
+// tournament's start date at the SOURCE, see that file's write_picks_feed() comment) were
+// quietly dragging on tracker integrity. This is the ingest/read-time defense-in-depth
+// twin of that source-side lock, broadened from the original outright-only version
+// (which reasoned that matchups were "legitimately placed during the tournament" — no
+// longer the policy). `details.first_seen` only ever carries DATE granularity (no
+// time-of-day), so this check stays at date resolution: `first_seen >= slate_date` marks
+// anything first seen on the tournament's start day or later. These must not be graded,
+// logged, or counted. Returns false when first_seen is unknown.
+export function isLatePgaPick(args: {
   sport?: string;
   market: string;
   tags?: string[];
@@ -131,7 +128,6 @@ export function isLatePgaOutright(args: {
   slate_date: string;
 }): boolean {
   if (args.sport !== "pga") return false;
-  if (!isGolfOutrightMarket(args.market, args.tags)) return false;
   const firstSeen = args.details?.first_seen;
   return typeof firstSeen === "string" && firstSeen >= args.slate_date;
 }

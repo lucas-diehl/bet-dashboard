@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { isLatePgaOutright, type PicksFile, type ResultsFile, type ValuesFile, type ContestsFile, type EloFile, type PoolFile, type BoardFile, type PropsFile } from "@bet/contract";
+import { isLatePgaPick, type PicksFile, type ResultsFile, type ValuesFile, type ContestsFile, type EloFile, type PoolFile, type BoardFile, type PropsFile } from "@bet/contract";
 import { assets, bets, dfsContests, dfsPools, dfsValues, eloRatings, modelBoards, propBoards, results, slates } from "./schema";
 
 export function openDb(url: string) {
@@ -41,10 +41,10 @@ export async function upsertPicksFile(db: Db, p: PicksFile, opts?: { reconcile?:
     })
     .returning({ id: slates.id });
 
-  // Drop PGA outrights that leaked in after the tournament started (first_seen >
-  // slate_date). They must never be stored, graded, or counted. Matchups unaffected.
+  // Drop PGA picks (any market) that leaked in after the tournament started
+  // (first_seen >= slate_date). They must never be stored, graded, or counted.
   const keptBets = p.bets.filter(
-    (b) => !isLatePgaOutright({ sport: b.sport ?? p.sport, market: b.market, tags: b.tags, details: b.details, slate_date: p.slate_date }),
+    (b) => !isLatePgaPick({ sport: b.sport ?? p.sport, market: b.market, tags: b.tags, details: b.details, slate_date: p.slate_date }),
   );
 
   for (const b of keptBets) {
