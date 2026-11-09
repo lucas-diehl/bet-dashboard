@@ -1,5 +1,5 @@
 import "server-only";
-import { isLatePgaPick } from "@bet/contract";
+import { isLatePgaOutright } from "@bet/contract";
 import type { BetRow, Dataset } from "@bet/db/types";
 
 // Data provider. Three sources:
@@ -34,9 +34,9 @@ export async function loadDataset(): Promise<Dataset> {
   // so historical/backfill/test slates don't count toward the tracker or board.
   const start = process.env.TRACKING_START;
   const rawBets = (start ? ds.bets.filter((b) => b.slate_date >= start) : ds.bets)
-    // Drop PGA picks (any market) that leaked in after the tournament started
-    // (first_seen >= slate_date) — never grade, log, or count them.
-    .filter((b) => !isLatePgaPick({ sport: b.sport, market: b.market, tags: b.tags, details: b.details, slate_date: b.slate_date }))
+    // Drop PGA outrights that leaked in after the tournament started (first_seen >
+    // slate_date) — never grade, log, or count them. Matchups are unaffected.
+    .filter((b) => !isLatePgaOutright({ sport: b.sport, market: b.market, tags: b.tags, details: b.details, slate_date: b.slate_date }))
     // User directive (2026-10-21): NFL spread/total ("ATS and O/U") picks are not
     // used any more — hide them everywhere, including already-graded history, not
     // just new ones. The model stopped generating new rows (NFL/scripts/57_publish_
