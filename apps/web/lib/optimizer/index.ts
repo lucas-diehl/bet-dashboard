@@ -63,6 +63,25 @@ export interface Pool {
   // excludes, default n/exposure) case; generateLineups() falls back to its own live
   // approximation from `cands` otherwise (custom n/exposure, or any lock/exclude).
   preset_sets?: Record<ContestType, { idx: number[]; win: number }[][]>;
+  // Build diagnostics from the engine (spine/R/report_card.R) — see BuildReport.tsx.
+  report?: BuildReportData | null;
+  alerts?: { lineup: number; built?: string; players_out: string[] }[] | null;
+  provisional?: boolean;
+}
+
+export interface ReportPlayerRow { name: string; pos?: string; exposure?: number; own?: number | null; lev?: number | null }
+export interface BuildReportData {
+  lineups?: number;
+  depth?: { pool_size: number; avg_rank: number; median_rank: number; worst_rank: number; first_skipped: number; direct_solves: number } | null;
+  positions_used?: Record<string, number>;
+  overlap_pairs?: Record<string, number>;
+  most_exposed?: ReportPlayerRow[];
+  leverage?: ReportPlayerRow[];
+  fades?: ReportPlayerRow[];
+  shapes?: Record<string, number> | null;
+  vacated_bumps?: { name: string; pos?: string; bump: number; proj: number; sim_coupled?: boolean }[] | null;
+  second_opinion?: { name: string; pos?: string; ours: number; other: number | null; note?: string | null }[] | null;
+  hidden_gems?: { proj: number; avg_own: number; uniqueness_pct: number; near_overlap: number; players: string[] }[] | null;
 }
 
 export type ContestType = "cash" | "single" | "gpp20" | "large";

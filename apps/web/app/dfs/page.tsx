@@ -3,6 +3,7 @@ import { loadValues } from "@/lib/values";
 import { loadPoolIndex, loadPoolPayload } from "@/lib/pools";
 import { parsePool } from "@/lib/optimizer";
 import { Optimizer } from "@/components/Optimizer";
+import { BuildReport } from "@/components/BuildReport";
 import { cls } from "@/lib/format";
 import { appToday } from "@/lib/time";
 
@@ -156,6 +157,7 @@ export default async function DfsPage({ searchParams }: { searchParams: Promise<
                 {" · "}{pool.players.length} players · {pool.cands.length.toLocaleString()} candidates
               </div>
               <Optimizer pool={pool} />
+              <BuildReport report={pool.report} alerts={pool.alerts} provisional={pool.provisional} />
             </>
           ) : valuePlays.length === 0 ? (
             <div className="empty">No {siteLabel} {meta.label} slate available right now.</div>

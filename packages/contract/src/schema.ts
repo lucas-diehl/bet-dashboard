@@ -377,6 +377,13 @@ export const PoolFileSchema = z
     opt_k: z.number().int().optional().describe("Sim count the cand_metrics were graded on."),
     cand_metrics: z.array(z.record(z.unknown())).nullable().optional().describe("Per-candidate metrics (gppRoi, cash, top1, win, dupe, own, proj)."),
     contests: z.array(z.record(z.unknown())).optional().describe("Live contest options (name, fee, field, payout mult)."),
+    // Fields below were being STRIPPED by zod's default unknown-key handling at ingest
+    // (found 2026-11-13: no stored payload had preset_sets, so the browser always fell
+    // back to its live approximation instead of the engine's guaranteed preset sets).
+    preset_sets: z.record(z.unknown()).nullable().optional().describe("Engine-built alternate lineup sets per contest preset (cash/single/gpp20/large)."),
+    report: z.record(z.unknown()).nullable().optional().describe("Build report card: pick depth, exposures, leverage/fades, stack shapes, injury bumps, second-opinion gaps, hidden gems."),
+    alerts: z.array(z.record(z.unknown())).nullable().optional().describe("Lineups from an earlier build containing players since ruled out."),
+    provisional: z.boolean().optional().describe("Built on an earlier day than the slate's games — expect changes."),
   })
   .describe("A SaberSim-style simulation pool for one DFS slate — the data feed for the browser optimizer.");
 
