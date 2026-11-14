@@ -132,6 +132,46 @@ export function BuildReport({
             ) : null}
           </div>
 
+          {report.chalk && report.chalk.length ? (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Good chalk / bad chalk (most-owned players)</div>
+              <div className="chart-scroll">
+                <table className="grid-table">
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "left" }}>Player</th>
+                      <th>Pos</th>
+                      <th>Salary</th>
+                      <th>Own</th>
+                      <th>Proj</th>
+                      <th>Pts/$1k</th>
+                      <th>2nd source</th>
+                      <th>Call</th>
+                      <th style={{ textAlign: "left" }}>Why</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.chalk.map((c) => (
+                      <tr key={`c-${c.name}`}>
+                        <td style={{ textAlign: "left", fontWeight: 600 }}>{c.name}</td>
+                        <td>{c.pos}</td>
+                        <td>${c.salary.toLocaleString()}</td>
+                        <td>{pct(c.own)}</td>
+                        <td>{c.proj.toFixed(1)}</td>
+                        <td>{c.value.toFixed(2)}</td>
+                        <td>{c.other == null ? "—" : c.other.toFixed(1)}</td>
+                        <td style={{ fontWeight: 700, color: c.verdict === "good" ? "var(--pos, #2e7d32)" : c.verdict === "bad" ? "var(--neg, #c62828)" : undefined }}>
+                          {c.verdict.toUpperCase()}
+                        </td>
+                        <td style={{ textAlign: "left" }}>{c.why}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
           {report.hidden_gems && report.hidden_gems.length ? (
             <div style={{ marginTop: 12 }}>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>Hidden gems — chalky players, rare combination (informational)</div>

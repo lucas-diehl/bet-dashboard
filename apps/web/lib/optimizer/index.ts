@@ -82,6 +82,7 @@ export interface BuildReportData {
   vacated_bumps?: { name: string; pos?: string; bump: number; proj: number; sim_coupled?: boolean }[] | null;
   second_opinion?: { name: string; pos?: string; ours: number; other: number | null; note?: string | null }[] | null;
   hidden_gems?: { proj: number; avg_own: number; uniqueness_pct: number; near_overlap: number; players: string[] }[] | null;
+  chalk?: { name: string; pos: string; salary: number; own: number; proj: number; value: number; ceil?: number | null; other?: number | null; verdict: "good" | "bad" | "watch"; why: string }[] | null;
 }
 
 export type ContestType = "cash" | "single" | "gpp20" | "large";
