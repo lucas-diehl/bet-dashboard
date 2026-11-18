@@ -54,8 +54,23 @@ export async function loadDataset(): Promise<Dataset> {
   // User directive: treat EVERY play as LIVE — no paper mode anywhere, past or
   // future. Applied on read so it covers both the feed and Supabase paths without
   // a DB migration or per-model change. Remove to restore model-reported modes.
-  const bets = rawBets.map((b) => (b.mode === "LIVE" ? b : { ...b, mode: "LIVE" as const }));
-  const slates = rawSlates.map((s) => (s.mode === "LIVE" ? s : { ...s, mode: "LIVE" as const }));
+  //
+  // CBB carve-out (2026-11-18): model isn't expected to be profitable before week 5
+  // (season starts counting live 2026-11-30) — CBB games before that date are tagged
+  // PAPER instead of LIVE, so they still show (with the paper badge) but never count
+  // toward the tracker. This is permanent per game date, not a rolling window: a CBB
+  // game before the cutoff stays PAPER even after 2026-11-30 passes. Remove the CBB
+  // branch (or adjust CBB_PAPER_CUTOFF) to end this early or restore normal treatment.
+  const CBB_PAPER_CUTOFF = "2026-11-30";
+  const modeFor = (sport: string, slate_date: string) => (sport === "cbb" && slate_date < CBB_PAPER_CUTOFF ? "PAPER" : "LIVE") as const;
+  const bets = rawBets.map((b) => {
+    const mode = modeFor(b.sport, b.slate_date);
+    return b.mode === mode ? b : { ...b, mode };
+  });
+  const slates = rawSlates.map((s) => {
+    const mode = modeFor(s.sport, s.slate_date);
+    return s.mode === mode ? s : { ...s, mode };
+  });
   return { slates, bets: dedupeBets(bets) };
 }
 
