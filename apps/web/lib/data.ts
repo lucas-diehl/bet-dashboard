@@ -49,8 +49,15 @@ export async function loadDataset(): Promise<Dataset> {
     // model stopped staking new ones (cfb-modeling/07_write_feed.R, EMIT_TOTAL defaults
     // off) but old rows stay in the DB; filtered here so history disappears too, not
     // just future picks.
-    .filter((b) => !(b.sport === "cfb" && b.market === "total"));
-  const rawSlates = start ? ds.slates.filter((s) => s.slate_date >= start) : ds.slates;
+    .filter((b) => !(b.sport === "cfb" && b.market === "total"))
+    // User directive (2026-11-24): remove The RSM Classic (PGA, 2026-11-19, 4W-14L)
+    // from the site entirely — board, history, and tracker. One-off exclusion for this
+    // single tournament's slate, not a standing PGA policy; remove this filter to
+    // restore it.
+    .filter((b) => !(b.sport === "pga" && b.slate_date === "2026-11-19"));
+  const rawSlates = (start ? ds.slates.filter((s) => s.slate_date >= start) : ds.slates).filter(
+    (s) => !(s.sport === "pga" && s.slate_date === "2026-11-19"),
+  );
   // User directive: treat EVERY play as LIVE — no paper mode anywhere, past or
   // future. Applied on read so it covers both the feed and Supabase paths without
   // a DB migration or per-model change. Remove to restore model-reported modes.
