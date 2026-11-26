@@ -1,6 +1,6 @@
 import "server-only";
 import { isLatePgaOutright } from "@bet/contract";
-import type { BetRow, Dataset } from "@bet/db/types";
+import type { BetRow, Dataset, Mode } from "@bet/db/types";
 
 // Data provider. Three sources:
 //   mock     (default) — in-memory demo dataset, zero setup
@@ -69,7 +69,7 @@ export async function loadDataset(): Promise<Dataset> {
   // game before the cutoff stays PAPER even after 2026-11-30 passes. Remove the CBB
   // branch (or adjust CBB_PAPER_CUTOFF) to end this early or restore normal treatment.
   const CBB_PAPER_CUTOFF = "2026-11-30";
-  const modeFor = (sport: string, slate_date: string) => (sport === "cbb" && slate_date < CBB_PAPER_CUTOFF ? "PAPER" : "LIVE") as const;
+  const modeFor = (sport: string, slate_date: string): Mode => (sport === "cbb" && slate_date < CBB_PAPER_CUTOFF ? "PAPER" : "LIVE");
   const bets = rawBets.map((b) => {
     const mode = modeFor(b.sport, b.slate_date);
     return b.mode === mode ? b : { ...b, mode };
