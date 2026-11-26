@@ -47,10 +47,7 @@ export default async function TrackerPage({ searchParams }: { searchParams: Prom
   const availableBooks = [...new Set(scopedForBooks.map((b) => b.book).filter((b): b is string => !!b))].sort();
   const book = sp.book && availableBooks.includes(sp.book) ? sp.book : null;
 
-  // mode: "LIVE" excludes PAPER-tagged bets (currently just CBB's pre-week-5 carve-out,
-  // see lib/data.ts) from the headline stats — a no-op for every other sport, which is
-  // still forced to LIVE there.
-  const t = trackerData(ds, range, sport, book, "LIVE");
+  const t = trackerData(ds, range, sport, book);
   const o = t.overall;
 
   // Per-bet ledger, respecting the active range + sport + book filters, most recent first.
